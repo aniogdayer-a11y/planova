@@ -30,7 +30,7 @@ class DatabaseService implements PlannerRepository {
   }
 
   static OpenDatabaseOptions get _options => OpenDatabaseOptions(
-    version: 2,
+    version: 3,
     onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
     onCreate: _onCreate,
     onUpgrade: (db, oldVersion, newVersion) async {
@@ -44,7 +44,33 @@ class DatabaseService implements PlannerRepository {
       await db.execute('''CREATE TABLE IF NOT EXISTS feedback (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT NOT NULL,
         content TEXT NOT NULL, visibility TEXT NOT NULL, created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL)''');
+        updated_at TEXT NOT NULL, author_avatar TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT 'General Feedback',
+        recommendation TEXT NOT NULL DEFAULT 'yes',
+        is_seed INTEGER NOT NULL DEFAULT 0)''');
+      final columns = (await db.rawQuery(
+        'PRAGMA table_info(feedback)',
+      )).map((column) => column['name']).toSet();
+      for (final entry in {
+        'author_avatar': "TEXT NOT NULL DEFAULT ''",
+        'category': "TEXT NOT NULL DEFAULT 'General Feedback'",
+        'recommendation': "TEXT NOT NULL DEFAULT 'yes'",
+        'is_seed': 'INTEGER NOT NULL DEFAULT 0',
+      }.entries) {
+        if (!columns.contains(entry.key)) {
+          await db.execute(
+            'ALTER TABLE feedback ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        }
+      }
+      await db.execute('''
+        UPDATE feedback SET is_seed = 1, visibility = 'private'
+        WHERE author_name = 'Planova' AND content IN (
+          'Start with the tasks you can realistically finish today.',
+          'Leave a little room between tasks so you do not have to rush.',
+          'Add a short break between focus sessions.'
+        )
+      ''');
       await db.execute('''CREATE TABLE IF NOT EXISTS feedback_likes (
         feedback_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
         PRIMARY KEY (feedback_id, user_id))''');
@@ -91,7 +117,10 @@ class DatabaseService implements PlannerRepository {
     await db.execute('''CREATE TABLE IF NOT EXISTS feedback (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT NOT NULL,
       content TEXT NOT NULL, visibility TEXT NOT NULL, created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL)''');
+      updated_at TEXT NOT NULL, author_avatar TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'General Feedback',
+      recommendation TEXT NOT NULL DEFAULT 'yes',
+      is_seed INTEGER NOT NULL DEFAULT 0)''');
     await db.execute('''CREATE TABLE IF NOT EXISTS feedback_likes (
       feedback_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
       PRIMARY KEY (feedback_id, user_id))''');
@@ -408,27 +437,11 @@ class DatabaseService implements PlannerRepository {
   @override
   Future<List<FeedbackModel>> getFeedback() async {
     final db = await database;
-    var rows = await db.query('feedback', orderBy: 'created_at DESC');
-    if (rows.isEmpty) {
-      final now = DateTime.now().toIso8601String();
-      final defaults = [
-        {'id': 'fb-1', 'content': 'Start with the tasks you can realistically finish today.'},
-        {'id': 'fb-2', 'content': 'Leave a little room between tasks so you do not have to rush.'},
-        {'id': 'fb-3', 'content': 'Add a short break between focus sessions.'},
-      ];
-      for (final d in defaults) {
-        await db.insert('feedback', {
-          'id': d['id']!,
-          'user_id': '1',
-          'author_name': 'Planova',
-          'content': d['content']!,
-          'visibility': 'public',
-          'created_at': now,
-          'updated_at': now,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      }
-      rows = await db.query('feedback', orderBy: 'created_at DESC');
-    }
+    final rows = await db.query(
+      'feedback',
+      where: 'is_seed = 0',
+      orderBy: 'created_at DESC',
+    );
     final likes = await db.query('feedback_likes');
     final counts = <String, int>{};
     final myLikes = <String>{};
@@ -451,6 +464,8 @@ class DatabaseService implements PlannerRepository {
   @override
   Future<FeedbackModel> addFeedback(
     String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
     String visibility = 'public',
   }) async {
     final db = await database;
@@ -461,7 +476,10 @@ class DatabaseService implements PlannerRepository {
       'id': id,
       'user_id': '1',
       'author_name': profile.name.isNotEmpty ? profile.name : 'Planova User',
+      'author_avatar': profile.avatarUrl,
       'content': content.trim(),
+      'category': category,
+      'recommendation': recommendation,
       'visibility': visibility,
       'created_at': now,
       'updated_at': now,
@@ -479,6 +497,8 @@ class DatabaseService implements PlannerRepository {
   Future<FeedbackModel> updateFeedback(
     String id,
     String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
     String visibility = 'public',
   }) async {
     final db = await database;
@@ -489,6 +509,8 @@ class DatabaseService implements PlannerRepository {
     final updated = {
       ...existing,
       'content': content.trim(),
+      'category': category,
+      'recommendation': recommendation,
       'visibility': visibility,
       'updated_at': now,
     };
@@ -511,7 +533,11 @@ class DatabaseService implements PlannerRepository {
   Future<void> deleteFeedback(String id) async {
     final db = await database;
     await db.delete('feedback', where: 'id = ?', whereArgs: [id]);
-    await db.delete('feedback_likes', where: 'feedback_id = ?', whereArgs: [id]);
+    await db.delete(
+      'feedback_likes',
+      where: 'feedback_id = ?',
+      whereArgs: [id],
+    );
   }
 
   @override
@@ -540,9 +566,6 @@ class DatabaseService implements PlannerRepository {
       where: 'feedback_id = ?',
       whereArgs: [id],
     );
-    return {
-      'is_liked_by_me': existing.isEmpty,
-      'likes_count': allLikes.length,
-    };
+    return {'is_liked_by_me': existing.isEmpty, 'likes_count': allLikes.length};
   }
 }

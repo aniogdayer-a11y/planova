@@ -143,12 +143,19 @@ class RemotePlannerRepository
   @override
   Future<FeedbackModel> addFeedback(
     String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
     String visibility = 'public',
   }) async {
     final result = await api.request(
       'POST',
       'feedback',
-      data: {'content': content, 'visibility': visibility},
+      data: {
+        'content': content,
+        'category': category,
+        'recommendation': recommendation,
+        'visibility': visibility,
+      },
     );
     return FeedbackModel.fromMap(
       Map<String, dynamic>.from(result['feedback'] as Map),
@@ -159,12 +166,19 @@ class RemotePlannerRepository
   Future<FeedbackModel> updateFeedback(
     String id,
     String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
     String visibility = 'public',
   }) async {
     final result = await api.request(
       'PUT',
       'feedback/$id',
-      data: {'content': content, 'visibility': visibility},
+      data: {
+        'content': content,
+        'category': category,
+        'recommendation': recommendation,
+        'visibility': visibility,
+      },
     );
     return FeedbackModel.fromMap(
       Map<String, dynamic>.from(result['feedback'] as Map),

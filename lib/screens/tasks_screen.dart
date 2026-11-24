@@ -53,10 +53,16 @@ class TasksScreen extends StatelessWidget {
                           .map(
                             (task) => CheckboxListTile(
                               value: task.isCompleted,
-                              onChanged: (_) => plannerAction(
-                                context,
-                                () => planner.toggleTaskCompletion(task.id!),
-                              ),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                plannerAction(
+                                  context,
+                                  () => planner.setTaskCompletion(
+                                    task.id!,
+                                    value,
+                                  ),
+                                );
+                              },
                               controlAffinity: ListTileControlAffinity.leading,
                               title: Text(
                                 task.title,
@@ -103,9 +109,9 @@ class TasksScreen extends StatelessWidget {
                       slot: slot,
                       startLabel: planner.displayTime(slot.startTime),
                       endLabel: planner.displayTime(slot.endTime),
-                      onToggle: () => plannerAction(
+                      onChanged: (value) => plannerAction(
                         context,
-                        () => planner.toggleSlotCompletion(slot.id!),
+                        () => planner.setSlotCompletion(slot.id!, value),
                       ),
                     ),
                   ),

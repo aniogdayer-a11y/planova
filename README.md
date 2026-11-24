@@ -92,6 +92,12 @@ Generation automatically uses the server's configured Gemini key. There is no pr
 
 Only validated task details go to Google's planning API. SMTP credentials and session tokens are not sent to Google. See [Google's key guidance](https://ai.google.dev/gemini-api/docs/api-key#security).
 
+## Feedback and APK download
+
+The **Feedback** page stores a category, recommendation response, and visibility choice with each authenticated submission. Feedback is private unless the user opts in to sharing it; only public submissions appear in Community Feedback. Authors can edit or delete their own entries, and likes are unique per user and entry. Supabase RLS protects the hosted records; the local account API applies the same ownership and visibility rules.
+
+The Home screen's **Download APK** button opens the public Google Drive folder configured by `APK_DOWNLOAD_URL`. The default is the project's shared APK folder; use a different HTTPS URL with `--dart-define=APK_DOWNLOAD_URL=...` when building if needed. The Drive folder must allow access to anyone with its link.
+
 ## Layout and account sync
 
 The desktop website uses a charcoal and cream ribbon with a central Planova badge. Mobile and tablet browser widths below 900 pixels, and native phone and tablet apps, use a floating dark bottom navigation bar with a white active tab. The Planova name is shared across the website, app launcher and OTP emails.

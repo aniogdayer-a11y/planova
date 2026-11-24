@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config/app_config.dart';
 import '../providers/planner_provider.dart';
 import '../widgets/calendar_widget.dart';
 import '../widgets/page_layout.dart';
@@ -36,6 +38,9 @@ class HomeScreen extends StatelessWidget {
       icon: const Icon(Icons.add, size: 18),
       label: Text(plan == null ? 'Plan this day' : 'Edit this day'),
     );
+    final downloadBanner = AppConfig.apkDownloadUri == null
+        ? null
+        : _ApkDownloadBanner(uri: AppConfig.apkDownloadUri!);
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 900;
@@ -165,9 +170,10 @@ class HomeScreen extends StatelessWidget {
                               slot: slot,
                               startLabel: planner.displayTime(slot.startTime),
                               endLabel: planner.displayTime(slot.endTime),
-                              onToggle: () => plannerAction(
+                              onChanged: (value) => plannerAction(
                                 context,
-                                () => planner.toggleSlotCompletion(slot.id!),
+                                () =>
+                                    planner.setSlotCompletion(slot.id!, value),
                               ),
                             ),
                           ),
@@ -225,6 +231,10 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ],
+            if (downloadBanner != null) ...[
+              const SizedBox(height: 24),
+              downloadBanner,
+            ],
           ],
         );
       },
@@ -260,6 +270,65 @@ class _Metric extends StatelessWidget {
           ),
         ],
       ),
+    ),
+  );
+}
+
+class _ApkDownloadBanner extends StatelessWidget {
+  final Uri uri;
+
+  const _ApkDownloadBanner({required this.uri});
+
+  Future<void> _open(BuildContext context) async {
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open the APK download link.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open the APK download link: $error'),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppColors.border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 16,
+      runSpacing: 12,
+      children: [
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You can download Planova as an APK.',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 4),
+            Text('Install the Android app on your device.'),
+          ],
+        ),
+        ElevatedButton(
+          onPressed: () => _open(context),
+          child: const Text('Download APK'),
+        ),
+      ],
     ),
   );
 }

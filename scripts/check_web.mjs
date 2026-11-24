@@ -95,8 +95,8 @@ try {
     const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);
     await writeFile('build/previews/'+name+'.png',Buffer.from(shot.data,'base64'));
   };
-  const clickLabel = async label => {
-    const point=await evaluate(`(() => {${allElements}for(const e of elements){if(e.getAttribute('role')==='button' && ((e.getAttribute('aria-label')||e.textContent||'').trim()===${JSON.stringify(label)})){const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};}}return null;})()`);
+  const clickLabel = async (label,role='button') => {
+    const point=await evaluate(`(() => {${allElements}for(const e of elements){if(e.getAttribute('role')===${JSON.stringify(role)} && ((e.getAttribute('aria-label')||e.textContent||'').trim()===${JSON.stringify(label)})){const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};}}return null;})()`);
     if(!point)throw new Error('Button not found: '+label);
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point},sessionId);
     await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point},sessionId);
@@ -125,17 +125,25 @@ try {
   await screenshot('web-login');
   await signIn('Example passphrase 123');
   await waitText('Review project notes');
+  await waitText('You can download Planova as an APK.');
+  await waitText('Download APK');
   if(await evaluate('document.title')!=='Planova')throw new Error('Website title is not Planova.');
   if(await evaluate('navigator.serviceWorker.getRegistrations().then(r => r.length)')!==0)throw new Error('A stale service worker is still registered.');
   if((await readText()).includes('A LITTLE STRUCTURE')||(await readText()).includes('Refresh plans')||(await readText()).includes('Refresh schedule'))throw new Error('Removed header content is still visible.');
   await screenshot('web-desktop');
+  await clickLabel('Feedback');await waitText('Community Feedback');
+  await waitText('Share your thoughts about Planova...');
+  await waitText("I'm willing to share my feedback with other Planova users.");
+  await waitText('Submit Feedback');
+  await screenshot('web-feedback');
+  await clickLabel('Home');await waitText('Overview');
   await size(1024,1000);await waitText('Overview');await screenshot('web-tablet');
   for(const width of [320,390,820]) {
     await size(width,844);await waitText('Hi, Dayer.');
     const position=await evaluate(`(() => {${allElements}return elements.filter(e=>e.getAttribute('role')==='button'&&(e.getAttribute('aria-label')||e.textContent||'').trim()==='Home').map(e=>{const r=e.getBoundingClientRect();return {y:r.y,height:r.height};}).find(r=>r.height>0);})()`);
     if(!position||position.y<700)throw new Error('Mobile Home navigation is not at the bottom at width '+width);
     await clickLabel('Tasks');await waitText('Edit plan');
-    await clickLabel('Tips');await waitText('Planning tips');
+    await clickLabel('Feedback');await waitText('Community Feedback');
     await clickLabel('Profile');await waitText('Change photo');
     await clickLabel('Settings');await waitText('24-hour time');
     await clickLabel('Home');await waitText('Hi, Dayer.');

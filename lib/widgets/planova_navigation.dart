@@ -3,18 +3,18 @@ import '../theme/app_colors.dart';
 import 'planova_brand.dart';
 import 'account_avatar.dart';
 
-const _labels = ['Home', 'Tasks', 'Suggestions', 'Profile', 'Settings'];
+const _labels = ['Home', 'Tasks', 'Feedback', 'Profile', 'Settings'];
 const _selectedIcons = [
   Icons.home_rounded,
   Icons.checklist_rounded,
-  Icons.lightbulb,
+  Icons.favorite_rounded,
   Icons.person,
   Icons.settings,
 ];
 const _icons = [
   Icons.home_outlined,
   Icons.checklist_rounded,
-  Icons.lightbulb_outline,
+  Icons.favorite_border,
   Icons.person_outline,
   Icons.settings_outlined,
 ];

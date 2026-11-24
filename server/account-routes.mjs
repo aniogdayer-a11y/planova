@@ -86,7 +86,13 @@ export async function accountRoutes({req,res,pathname,url,json,auth,store,cookie
       if (req.method === 'GET') json(200, {feedback: store.listFeedback(user.id)});
       else if (req.method === 'POST') {
         const body = await readJson(req);
-        json(201, {feedback: store.addFeedback(user.id, body.content, body.visibility)});
+        json(201, {feedback: store.addFeedback(
+          user.id,
+          body.content,
+          body.category,
+          body.recommendation,
+          body.visibility,
+        )});
       } else throw new HttpError(405, 'Method not allowed.');
       return true;
     }
@@ -99,7 +105,14 @@ export async function accountRoutes({req,res,pathname,url,json,auth,store,cookie
     if (fbItemMatch) {
       if (req.method === 'PUT') {
         const body = await readJson(req);
-        json(200, {feedback: store.updateFeedback(user.id, fbItemMatch[1], body.content, body.visibility)});
+        json(200, {feedback: store.updateFeedback(
+          user.id,
+          fbItemMatch[1],
+          body.content,
+          body.category,
+          body.recommendation,
+          body.visibility,
+        )});
       } else if (req.method === 'DELETE') {
         json(200, store.deleteFeedback(user.id, fbItemMatch[1]));
       } else throw new HttpError(405, 'Method not allowed.');

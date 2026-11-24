@@ -81,7 +81,7 @@ void main() {
               format: ui.ImageByteFormat.png,
             );
             final file = File(
-              'build/previews/${['home', 'tasks', 'tips', 'profile', 'settings'][tab]}.png',
+              'build/previews/${['home', 'tasks', 'feedback', 'profile', 'settings'][tab]}.png',
             );
             await file.parent.create(recursive: true);
             await file.writeAsBytes(bytes!.buffer.asUint8List());

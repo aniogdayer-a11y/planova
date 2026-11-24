@@ -37,13 +37,38 @@ export class PlannerStore {
       CREATE TABLE IF NOT EXISTS planner_feedback (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         author_name TEXT NOT NULL, content TEXT NOT NULL, visibility TEXT NOT NULL DEFAULT 'public',
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        author_avatar TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT 'General Feedback',
+        recommendation TEXT NOT NULL DEFAULT 'yes',
+        is_seed INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS planner_feedback_likes (
         feedback_id TEXT NOT NULL REFERENCES planner_feedback(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at TEXT NOT NULL, PRIMARY KEY(feedback_id,user_id));
       CREATE TABLE IF NOT EXISTS planner_counter (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
       INSERT OR IGNORE INTO planner_counter VALUES ('entity', 0);`);
+    const feedbackColumns = new Set(
+      db.prepare('PRAGMA table_info(planner_feedback)').all().map(row => row.name),
+    );
+    for (const [name, type] of Object.entries({
+      author_avatar: "TEXT NOT NULL DEFAULT ''",
+      category: "TEXT NOT NULL DEFAULT 'General Feedback'",
+      recommendation: "TEXT NOT NULL DEFAULT 'yes'",
+      is_seed: 'INTEGER NOT NULL DEFAULT 0',
+    })) {
+      if (!feedbackColumns.has(name)) {
+        db.exec(`ALTER TABLE planner_feedback ADD COLUMN ${name} ${type}`);
+      }
+    }
+    db.prepare(`
+      UPDATE planner_feedback SET is_seed = 1, visibility = 'private'
+      WHERE author_name = 'Planova' AND content IN (?, ?, ?)
+    `).run(
+      'Start with the tasks you can realistically finish today.',
+      'Leave a little room between tasks so you do not have to rush.',
+      'Add a short break between focus sessions.',
+    );
   }
   nextId() {
     this.db.prepare("UPDATE planner_counter SET value = value + 1 WHERE name = 'entity'").run();
@@ -200,30 +225,12 @@ export class PlannerStore {
   }
   listFeedback(userId) {
     let rows = this.db.prepare(`
-      SELECT id, user_id, author_name, content, visibility, created_at, updated_at
+      SELECT id, user_id, author_name, author_avatar, content, category,
+        recommendation, visibility, created_at, updated_at
       FROM planner_feedback
-      WHERE visibility = 'public' OR user_id = ?
+      WHERE is_seed = 0 AND (visibility = 'public' OR user_id = ?)
       ORDER BY created_at DESC
     `).all(userId);
-    if (rows.length === 0) {
-      const now = new Date().toISOString();
-      const userName = this.db.prepare('SELECT name FROM users WHERE id = ?').get(userId)?.name || 'Planova';
-      const defaults = [
-        {id: 'fb-1', content: 'Start with the tasks you can realistically finish today.'},
-        {id: 'fb-2', content: 'Leave a little room between tasks so you do not have to rush.'},
-        {id: 'fb-3', content: 'Add a short break between focus sessions.'},
-      ];
-      for (const d of defaults) {
-        this.db.prepare('INSERT OR IGNORE INTO planner_feedback (id, user_id, author_name, content, visibility, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-          .run(d.id, userId, 'Planova', d.content, 'public', now, now);
-      }
-      rows = this.db.prepare(`
-        SELECT id, user_id, author_name, content, visibility, created_at, updated_at
-        FROM planner_feedback
-        WHERE visibility = 'public' OR user_id = ?
-        ORDER BY created_at DESC
-      `).all(userId);
-    }
     const likes = this.db.prepare('SELECT feedback_id, user_id FROM planner_feedback_likes').all();
     const counts = new Map();
     const likedSet = new Set();
@@ -238,34 +245,44 @@ export class PlannerStore {
       is_mine: r.user_id === userId,
     }));
   }
-  addFeedback(userId, content, visibility = 'public') {
+  addFeedback(userId, content, category = 'General Feedback', recommendation = 'yes', visibility = 'private') {
     const text = typeof content === 'string' ? content.trim() : '';
     if (!text || text.length > 1000) throw new HttpError(400, 'Feedback must be between 1 and 1000 characters.');
-    const vis = visibility === 'private' ? 'private' : 'public';
-    const authorName = this.db.prepare('SELECT name FROM users WHERE id = ?').get(userId)?.name || 'Planova User';
+    if (!['General Feedback', 'Feature Suggestion', 'Bug Report'].includes(category)) throw new HttpError(400, 'Choose a feedback category.');
+    if (!['yes', 'maybe', 'no'].includes(recommendation)) throw new HttpError(400, 'Choose a recommendation response.');
+    const vis = visibility === 'public' ? 'public' : 'private';
+    const user = this.db.prepare('SELECT name, avatar_data FROM users WHERE id = ?').get(userId);
+    const authorName = user?.name || 'Planova User';
+    const authorAvatar = user?.avatar_data || '';
     const id = 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const now = new Date().toISOString();
-    this.db.prepare('INSERT INTO planner_feedback (id, user_id, author_name, content, visibility, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-      .run(id, userId, authorName, text, vis, now, now);
+    this.db.prepare(`INSERT INTO planner_feedback
+      (id, user_id, author_name, author_avatar, content, category, recommendation, visibility, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, userId, authorName, authorAvatar, text, category, recommendation, vis, now, now);
     return {
-      id, user_id: userId, author_name: authorName, content: text, visibility: vis,
+      id, user_id: userId, author_name: authorName, author_avatar: authorAvatar,
+      content: text, category, recommendation, visibility: vis,
       created_at: now, updated_at: now, likes_count: 0, is_liked_by_me: false, is_mine: true,
     };
   }
-  updateFeedback(userId, id, content, visibility = 'public') {
+  updateFeedback(userId, id, content, category = 'General Feedback', recommendation = 'yes', visibility = 'private') {
     const text = typeof content === 'string' ? content.trim() : '';
     if (!text || text.length > 1000) throw new HttpError(400, 'Feedback must be between 1 and 1000 characters.');
-    const vis = visibility === 'private' ? 'private' : 'public';
-    const row = this.db.prepare('SELECT user_id, author_name, created_at FROM planner_feedback WHERE id = ?').get(id);
+    if (!['General Feedback', 'Feature Suggestion', 'Bug Report'].includes(category)) throw new HttpError(400, 'Choose a feedback category.');
+    if (!['yes', 'maybe', 'no'].includes(recommendation)) throw new HttpError(400, 'Choose a recommendation response.');
+    const vis = visibility === 'public' ? 'public' : 'private';
+    const row = this.db.prepare('SELECT user_id, author_name, author_avatar, created_at FROM planner_feedback WHERE id = ?').get(id);
     if (!row) throw new HttpError(404, 'Feedback not found.');
     if (row.user_id !== userId) throw new HttpError(403, 'Unauthorized to edit this feedback.');
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE planner_feedback SET content = ?, visibility = ?, updated_at = ? WHERE id = ?')
-      .run(text, vis, now, id);
+    this.db.prepare('UPDATE planner_feedback SET content = ?, category = ?, recommendation = ?, visibility = ?, updated_at = ? WHERE id = ?')
+      .run(text, category, recommendation, vis, now, id);
     const likesCount = this.db.prepare('SELECT COUNT(*) as count FROM planner_feedback_likes WHERE feedback_id = ?').get(id)?.count || 0;
     const isLiked = Boolean(this.db.prepare('SELECT 1 FROM planner_feedback_likes WHERE feedback_id = ? AND user_id = ?').get(id, userId));
     return {
-      id, user_id: userId, author_name: row.author_name, content: text, visibility: vis,
+      id, user_id: userId, author_name: row.author_name, author_avatar: row.author_avatar,
+      content: text, category, recommendation, visibility: vis,
       created_at: row.created_at, updated_at: now, likes_count: likesCount, is_liked_by_me: isLiked, is_mine: true,
     };
   }

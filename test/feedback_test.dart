@@ -19,14 +19,19 @@ void main() {
 
   test('Feedback CRUD and likes persistence in database service', () async {
     final initial = await db.getFeedback();
-    expect(initial.length, 3);
-    expect(initial.first.likesCount, 0);
-    expect(initial.first.isLikedByMe, isFalse);
+    expect(initial, isEmpty);
 
     // Add feedback
-    final created = await db.addFeedback('Drink water between tasks', visibility: 'public');
+    final created = await db.addFeedback(
+      'Drink water between tasks',
+      category: 'Feature Suggestion',
+      recommendation: 'maybe',
+      visibility: 'public',
+    );
     expect(created.content, 'Drink water between tasks');
     expect(created.isMine, isTrue);
+    expect(created.category, 'Feature Suggestion');
+    expect(created.recommendation, 'maybe');
 
     // Like feedback
     final likeResult = await db.toggleFeedbackLike(created.id);
@@ -42,17 +47,38 @@ void main() {
     await db.toggleFeedbackLike(created.id);
 
     // Update feedback
-    final updated = await db.updateFeedback(created.id, 'Stay hydrated all day');
+    final updated = await db.updateFeedback(
+      created.id,
+      'Stay hydrated all day',
+      category: 'Bug Report',
+      recommendation: 'no',
+    );
     expect(updated.content, 'Stay hydrated all day');
+    expect(updated.category, 'Bug Report');
+    expect(updated.recommendation, 'no');
     expect(updated.likesCount, 1);
 
     // Delete feedback
     await db.deleteFeedback(created.id);
     final remaining = await db.getFeedback();
     expect(remaining.any((f) => f.id == created.id), isFalse);
+
+    final private = await db.addFeedback(
+      'Only I should see this.',
+      visibility: 'private',
+    );
+    expect(private.visibility, 'private');
+    expect((await db.getFeedback()).single.id, private.id);
+    await db.deleteFeedback(private.id);
   });
 
-  testWidgets('Suggestions screen renders comment feed, submits, and likes', (tester) async {
+  testWidgets('Feedback screen submits public feedback and supports likes', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     late PlannerProvider planner;
     await tester.runAsync(() async {
       planner = PlannerProvider(database: db);
@@ -63,34 +89,21 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: planner,
-        child: const MaterialApp(
-          home: Scaffold(body: SuggestionsScreen()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: SuggestionsScreen())),
       ),
     );
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
 
-    // Verify initial suggestions rendered like comments
-    expect(find.text('Suggestions'), findsOneWidget);
-    expect(find.text('Start with the tasks you can realistically finish today.'), findsOneWidget);
+    expect(find.text('Feedback'), findsOneWidget);
+    expect(
+      find.text('No community feedback yet. Be the first to share.'),
+      findsOneWidget,
+    );
 
-    // Verify like button
-    final firstId = planner.feedbackList.first.id;
-    final likeBtn = find.byKey(ValueKey('like-$firstId'));
-    expect(likeBtn, findsOneWidget);
-
-    // Tap like button
-    await tester.runAsync(() async {
-      await tester.tap(likeBtn);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    });
-    await tester.pumpAndSettle();
-    expect(planner.feedbackList.first.isLikedByMe, isTrue);
-    expect(planner.feedbackList.first.likesCount, 1);
-
-    // Post new suggestion via comment input
-    final input = find.byType(TextField);
+    final input = find.byType(TextField).first;
     await tester.enterText(input, 'Take 5 deep breaths');
+    await tester.tap(find.byType(Checkbox).first);
     await tester.runAsync(() async {
       await tester.tap(find.byKey(const ValueKey('submit-suggestion-button')));
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -98,6 +111,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Take 5 deep breaths'), findsOneWidget);
+    expect(planner.feedbackList.first.visibility, 'public');
+
+    final firstId = planner.feedbackList.first.id;
+    final likeBtn = find.byKey(ValueKey('like-$firstId'));
+    expect(likeBtn, findsOneWidget);
+    await tester.ensureVisible(likeBtn);
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(likeBtn).onPressed, isNotNull);
+    await tester.tap(likeBtn);
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(planner.feedbackList.first.isLikedByMe, isTrue);
+    expect(planner.feedbackList.first.likesCount, 1);
 
     await tester.pumpWidget(const SizedBox.shrink());
     planner.dispose();

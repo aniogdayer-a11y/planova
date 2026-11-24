@@ -56,20 +56,3 @@ create policy "feedback_likes_insert" on public.feedback_likes for insert to aut
 drop policy if exists "feedback_likes_delete" on public.feedback_likes;
 create policy "feedback_likes_delete" on public.feedback_likes for delete to authenticated
   using (user_id = (select auth.uid()));
-
--- Seed initial suggestions if table is empty and a user exists
-do $$
-declare
-  seed_user uuid;
-begin
-  select id into seed_user from auth.users order by created_at asc limit 1;
-  if seed_user is not null then
-    if not exists (select 1 from public.feedback) then
-      insert into public.feedback (user_id, author_name, content, visibility) values
-        (seed_user, 'Planova', 'Start with the tasks you can realistically finish today.', 'public'),
-        (seed_user, 'Planova', 'Leave a little room between tasks so you do not have to rush.', 'public'),
-        (seed_user, 'Planova', 'Add a short break between focus sessions.', 'public');
-    end if;
-  end if;
-end;
-$$;

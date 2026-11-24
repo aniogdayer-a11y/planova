@@ -2,8 +2,12 @@ class FeedbackModel {
   final String id;
   final String userId;
   final String authorName;
+  final String authorAvatar;
   final String content;
+  final String category;
+  final String recommendation;
   final String visibility;
+  final bool isSeed;
   final DateTime createdAt;
   final DateTime? updatedAt;
   final int likesCount;
@@ -14,8 +18,12 @@ class FeedbackModel {
     required this.id,
     required this.userId,
     required this.authorName,
+    this.authorAvatar = '',
     required this.content,
+    this.category = 'General Feedback',
+    this.recommendation = 'yes',
     this.visibility = 'public',
+    this.isSeed = false,
     required this.createdAt,
     this.updatedAt,
     this.likesCount = 0,
@@ -27,8 +35,12 @@ class FeedbackModel {
     String? id,
     String? userId,
     String? authorName,
+    String? authorAvatar,
     String? content,
+    String? category,
+    String? recommendation,
     String? visibility,
+    bool? isSeed,
     DateTime? createdAt,
     DateTime? updatedAt,
     int? likesCount,
@@ -39,8 +51,12 @@ class FeedbackModel {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       authorName: authorName ?? this.authorName,
+      authorAvatar: authorAvatar ?? this.authorAvatar,
       content: content ?? this.content,
+      category: category ?? this.category,
+      recommendation: recommendation ?? this.recommendation,
       visibility: visibility ?? this.visibility,
+      isSeed: isSeed ?? this.isSeed,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       likesCount: likesCount ?? this.likesCount,
@@ -54,8 +70,12 @@ class FeedbackModel {
       'id': id,
       'user_id': userId,
       'author_name': authorName,
+      'author_avatar': authorAvatar,
       'content': content,
+      'category': category,
+      'recommendation': recommendation,
       'visibility': visibility,
+      'is_seed': isSeed,
       'created_at': createdAt.toIso8601String(),
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
       'likes_count': likesCount,
@@ -71,8 +91,12 @@ class FeedbackModel {
       authorName: (map['author_name'] as String?)?.trim().isNotEmpty == true
           ? map['author_name'] as String
           : 'Planova',
+      authorAvatar: (map['author_avatar'] as String?) ?? '',
       content: (map['content'] as String?) ?? '',
+      category: (map['category'] as String?) ?? 'General Feedback',
+      recommendation: (map['recommendation'] as String?) ?? 'yes',
       visibility: (map['visibility'] as String?) ?? 'public',
+      isSeed: map['is_seed'] == true || map['is_seed'] == 1,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),

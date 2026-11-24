@@ -4,13 +4,13 @@ import '../theme/app_colors.dart';
 
 class TimelineSlotCard extends StatelessWidget {
   final ScheduleSlotModel slot;
-  final VoidCallback? onToggle;
+  final ValueChanged<bool>? onChanged;
   final String? startLabel;
   final String? endLabel;
   const TimelineSlotCard({
     super.key,
     required this.slot,
-    this.onToggle,
+    this.onChanged,
     this.startLabel,
     this.endLabel,
   });
@@ -31,14 +31,16 @@ class TimelineSlotCard extends StatelessWidget {
                 width: 40,
                 child: Icon(Icons.coffee_outlined, size: 22),
               )
-            : onToggle == null
+            : onChanged == null
             ? const SizedBox(
                 width: 40,
                 child: Icon(Icons.circle_outlined, size: 20),
               )
             : Checkbox(
                 value: slot.isCompleted,
-                onChanged: (_) => onToggle!(),
+                onChanged: (value) {
+                  if (value != null) onChanged!(value);
+                },
                 semanticLabel: 'Complete ${slot.title}, ${slot.subtitle}',
               ),
         title: Text(

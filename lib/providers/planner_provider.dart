@@ -69,31 +69,57 @@ class PlannerProvider extends ChangeNotifier {
   List<FeedbackModel> get feedbackList => List.unmodifiable(_feedbackList);
   bool _loadingFeedback = false;
   bool get loadingFeedback => _loadingFeedback;
+  String? _feedbackError;
+  String? get feedbackError => _feedbackError;
 
   Future<void> loadFeedback() async {
     _loadingFeedback = true;
+    _feedbackError = null;
     notifyListeners();
     try {
       _feedbackList = await _db.getFeedback();
-    } catch (_) {
+    } catch (error) {
+      _feedbackError = 'Could not load feedback: $error';
     } finally {
       _loadingFeedback = false;
       notifyListeners();
     }
   }
 
-  Future<void> addFeedback(String content, {String visibility = 'public'}) async {
+  Future<void> addFeedback(
+    String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
+    String visibility = 'public',
+  }) async {
     final clean = content.trim();
     if (clean.isEmpty) return;
-    final item = await _db.addFeedback(clean, visibility: visibility);
+    final item = await _db.addFeedback(
+      clean,
+      category: category,
+      recommendation: recommendation,
+      visibility: visibility,
+    );
     _feedbackList = [item, ..._feedbackList];
     notifyListeners();
   }
 
-  Future<void> updateFeedback(String id, String content, {String visibility = 'public'}) async {
+  Future<void> updateFeedback(
+    String id,
+    String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
+    String visibility = 'public',
+  }) async {
     final clean = content.trim();
     if (clean.isEmpty) return;
-    final updated = await _db.updateFeedback(id, clean, visibility: visibility);
+    final updated = await _db.updateFeedback(
+      id,
+      clean,
+      category: category,
+      recommendation: recommendation,
+      visibility: visibility,
+    );
     _feedbackList = _feedbackList.map((f) => f.id == id ? updated : f).toList();
     notifyListeners();
   }
@@ -402,11 +428,15 @@ class PlannerProvider extends ChangeNotifier {
   Future<void> toggleTaskCompletion(int id) async {
     final task = _currentPlan?.tasks.where((t) => t.id == id).firstOrNull;
     if (task != null) {
-      await _writeCompletion(
-        'task:$id',
-        () => _db.toggleTaskCompletion(id, !task.isCompleted),
-      );
+      await setTaskCompletion(id, !task.isCompleted);
     }
+  }
+
+  Future<void> setTaskCompletion(int id, bool completed) async {
+    await _writeCompletion(
+      'task:$id',
+      () => _db.toggleTaskCompletion(id, completed),
+    );
   }
 
   Future<void> toggleSlotCompletion(int id) async {
@@ -414,11 +444,15 @@ class PlannerProvider extends ChangeNotifier {
         .where((s) => s.id == id)
         .firstOrNull;
     if (slot != null) {
-      await _writeCompletion(
-        'slot:$id',
-        () => _db.toggleSlotCompletion(id, !slot.isCompleted),
-      );
+      await setSlotCompletion(id, !slot.isCompleted);
     }
+  }
+
+  Future<void> setSlotCompletion(int id, bool completed) async {
+    await _writeCompletion(
+      'slot:$id',
+      () => _db.toggleSlotCompletion(id, completed),
+    );
   }
 
   Future<void> toggleTimeFormat(bool value) async {

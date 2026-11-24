@@ -23,16 +23,22 @@ test('theme and likes are validated and isolated per account', () => {
 test('feedback submission, visibility, likes, editing and deletion work and isolate permissions', () => {
   const {db,store} = fixture();
   try {
-    // List initial suggestions
+    // The community feed starts empty instead of displaying seeded tips.
     const initial = store.listFeedback('a');
-    assert.ok(initial.length >= 3);
-    assert.equal(initial[0].likes_count, 0);
-    assert.equal(initial[0].is_liked_by_me, false);
+    assert.deepEqual(initial, []);
 
     // Create feedback
-    const created = store.addFeedback('a', 'Great planning assistant!', 'public');
+    const created = store.addFeedback(
+      'a',
+      'Great planning assistant!',
+      'Feature Suggestion',
+      'yes',
+      'public',
+    );
     assert.equal(created.content, 'Great planning assistant!');
     assert.equal(created.is_mine, true);
+    assert.equal(created.category, 'Feature Suggestion');
+    assert.equal(created.recommendation, 'yes');
 
     // Visible to b
     const listB = store.listFeedback('b');
@@ -54,8 +60,17 @@ test('feedback submission, visibility, likes, editing and deletion work and isol
     store.toggleFeedbackLike('b', created.id);
 
     // Update by owner 'a'
-    const updated = store.updateFeedback('a', created.id, 'Updated content');
+    const updated = store.updateFeedback(
+      'a',
+      created.id,
+      'Updated content',
+      'Bug Report',
+      'maybe',
+      'public',
+    );
     assert.equal(updated.content, 'Updated content');
+    assert.equal(updated.category, 'Bug Report');
+    assert.equal(updated.recommendation, 'maybe');
     assert.equal(updated.likes_count, 1);
 
     // Update by non-owner 'b' throws 403
@@ -68,6 +83,16 @@ test('feedback submission, visibility, likes, editing and deletion work and isol
     store.deleteFeedback('a', created.id);
     const afterDelete = store.listFeedback('a');
     assert.ok(!afterDelete.some(f => f.id === created.id));
+
+    const privateFeedback = store.addFeedback(
+      'a',
+      'Private note',
+      'General Feedback',
+      'no',
+      'private',
+    );
+    assert.ok(store.listFeedback('a').some(f => f.id === privateFeedback.id));
+    assert.ok(!store.listFeedback('b').some(f => f.id === privateFeedback.id));
   } finally { db.close(); }
 });
 function fixture() {

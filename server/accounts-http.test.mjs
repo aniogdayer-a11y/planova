@@ -81,6 +81,62 @@ test('avatar upload, replacement and removal sync only to the owning account',as
   assert.equal((await request('/api/profile/avatar',{method:'PUT',data:{image_base64:photo.toString('base64')}})).status,401);
 }));
 
+test('feedback API persists categories and recommendations and isolates private entries', async () => fixture(async ({request, signIn}) => {
+  const owner = await (await signIn('feedback-owner@example.test')).json();
+  const other = await (await signIn('feedback-other@example.test')).json();
+
+  const publicResponse = await request('/api/feedback', {
+    method: 'POST',
+    token: owner.token,
+    data: {
+      content: 'Please add calendar reminders.',
+      category: 'Feature Suggestion',
+      recommendation: 'maybe',
+      visibility: 'public',
+    },
+  });
+  assert.equal(publicResponse.status, 201);
+  const {feedback: shared} = await publicResponse.json();
+  assert.equal(shared.category, 'Feature Suggestion');
+  assert.equal(shared.recommendation, 'maybe');
+
+  const privateResponse = await request('/api/feedback', {
+    method: 'POST',
+    token: owner.token,
+    data: {
+      content: 'A private note.',
+      category: 'Bug Report',
+      recommendation: 'no',
+      visibility: 'private',
+    },
+  });
+  const {feedback: privateItem} = await privateResponse.json();
+  const otherFeed = await (await request('/api/feedback', {token: other.token})).json();
+  assert.ok(otherFeed.feedback.some(item => item.id === shared.id));
+  assert.ok(!otherFeed.feedback.some(item => item.id === privateItem.id));
+
+  assert.equal((await request(`/api/feedback/${privateItem.id}`, {
+    method: 'PUT',
+    token: other.token,
+    data: {content: 'Unauthorized edit.'},
+  })).status, 403);
+  assert.equal((await request(`/api/feedback/${privateItem.id}`, {
+    method: 'DELETE',
+    token: other.token,
+  })).status, 403);
+
+  const like = await (await request(`/api/feedback/${shared.id}/like`, {
+    method: 'POST',
+    token: other.token,
+  })).json();
+  assert.deepEqual(like, {is_liked_by_me: true, likes_count: 1});
+  const unlike = await (await request(`/api/feedback/${shared.id}/like`, {
+    method: 'POST',
+    token: other.token,
+  })).json();
+  assert.deepEqual(unlike, {is_liked_by_me: false, likes_count: 0});
+}));
+
 test('email password reset clears browser cookies and revokes native sessions',async()=>fixture(async({request,signIn,codes,advance})=>{
   const owner=await(await signIn('reset@example.test')).json();
   advance(61_000);

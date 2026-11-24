@@ -194,22 +194,12 @@ Deno.serve(async (req) => {
     if (req.method === 'GET' && path === 'feedback') {
       const { data: rows, error: fbError } = await supabase
         .from('feedback')
-        .select('id, user_id, author_name, content, visibility, created_at, updated_at')
+        .select('id, user_id, author_name, author_avatar, content, category, recommendation, visibility, created_at, updated_at, is_seed')
+        .eq('is_seed', false)
         .order('created_at', { ascending: false })
       if (fbError) throw fbError
 
-      let items = rows || []
-      if (items.length === 0) {
-        const { data: inserted } = await supabase
-          .from('feedback')
-          .insert([
-            { user_id: user.id, author_name: 'Planova', content: 'Start with the tasks you can realistically finish today.', visibility: 'public' },
-            { user_id: user.id, author_name: 'Planova', content: 'Leave a little room between tasks so you do not have to rush.', visibility: 'public' },
-            { user_id: user.id, author_name: 'Planova', content: 'Add a short break between focus sessions.', visibility: 'public' }
-          ])
-          .select()
-        if (inserted && inserted.length > 0) items = inserted
-      }
+      const items = rows || []
 
       const { data: likes, error: likesError } = await supabase
         .from('feedback_likes')
@@ -233,14 +223,20 @@ Deno.serve(async (req) => {
     }
     if (req.method === 'POST' && path === 'feedback') {
       const content = String(body?.content || '').trim()
-      const visibility = body?.visibility === 'private' ? 'private' : 'public'
+      const visibility = body?.visibility === 'public' ? 'public' : 'private'
+      const category = body?.category ?? 'General Feedback'
+      const recommendation = body?.recommendation ?? 'yes'
       if (!content || content.length > 1000) return fail('Feedback must be between 1 and 1000 characters.', 400, origin)
-      const { data: profile } = await supabase.from('profiles').select('name').eq('user_id', user.id).maybeSingle()
+      if (!['General Feedback', 'Feature Suggestion', 'Bug Report'].includes(category)) return fail('Choose a feedback category.', 400, origin)
+      if (!['yes', 'maybe', 'no'].includes(recommendation)) return fail('Choose a recommendation response.', 400, origin)
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('name,avatar_data').eq('user_id', user.id).maybeSingle()
+      if (profileError) throw profileError
       const author_name = profile?.name || 'Planova User'
+      const author_avatar = profile?.avatar_data || ''
 
       const { data: item, error: insError } = await supabase
         .from('feedback')
-        .insert({ user_id: user.id, author_name, content, visibility })
+        .insert({ user_id: user.id, author_name, author_avatar, content, category, recommendation, visibility })
         .select()
         .single()
       if (insError) throw insError
@@ -256,12 +252,16 @@ Deno.serve(async (req) => {
     if (req.method === 'PUT' && path.startsWith('feedback/') && !path.endsWith('/like')) {
       const id = path.slice('feedback/'.length)
       const content = String(body?.content || '').trim()
-      const visibility = body?.visibility === 'private' ? 'private' : 'public'
+      const visibility = body?.visibility === 'public' ? 'public' : 'private'
+      const category = body?.category ?? 'General Feedback'
+      const recommendation = body?.recommendation ?? 'yes'
       if (!content || content.length > 1000) return fail('Feedback must be between 1 and 1000 characters.', 400, origin)
+      if (!['General Feedback', 'Feature Suggestion', 'Bug Report'].includes(category)) return fail('Choose a feedback category.', 400, origin)
+      if (!['yes', 'maybe', 'no'].includes(recommendation)) return fail('Choose a recommendation response.', 400, origin)
 
       const { data: item, error: updError } = await supabase
         .from('feedback')
-        .update({ content, visibility, updated_at: new Date().toISOString() })
+        .update({ content, category, recommendation, visibility, updated_at: new Date().toISOString() })
         .eq('id', id)
         .eq('user_id', user.id)
         .select()
@@ -293,20 +293,24 @@ Deno.serve(async (req) => {
     }
     if (req.method === 'POST' && path.startsWith('feedback/') && path.endsWith('/like')) {
       const id = path.slice('feedback/'.length, path.length - '/like'.length)
-      const { data: existing } = await supabase
+      const { data: existing, error: readError } = await supabase
         .from('feedback_likes')
         .select('feedback_id')
         .eq('feedback_id', id)
         .eq('user_id', user.id)
         .maybeSingle()
+      if (readError) throw readError
 
       if (existing) {
-        await supabase.from('feedback_likes').delete().eq('feedback_id', id).eq('user_id', user.id)
+        const { error } = await supabase.from('feedback_likes').delete().eq('feedback_id', id).eq('user_id', user.id)
+        if (error) throw error
       } else {
-        await supabase.from('feedback_likes').insert({ feedback_id: id, user_id: user.id })
+        const { error } = await supabase.from('feedback_likes').insert({ feedback_id: id, user_id: user.id })
+        if (error) throw error
       }
 
-      const { count } = await supabase.from('feedback_likes').select('*', { count: 'exact', head: true }).eq('feedback_id', id)
+      const { count, error: countError } = await supabase.from('feedback_likes').select('*', { count: 'exact', head: true }).eq('feedback_id', id)
+      if (countError) throw countError
       return json({
         is_liked_by_me: !existing,
         likes_count: count || 0

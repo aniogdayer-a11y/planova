@@ -209,7 +209,7 @@ void main() {
         (await (await legacy.database).rawQuery(
           'PRAGMA user_version',
         )).first.values.first,
-        2,
+        3,
       );
     } finally {
       await legacy.close();

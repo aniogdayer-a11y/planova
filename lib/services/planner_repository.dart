@@ -14,8 +14,19 @@ abstract class PlannerRepository {
   Future<String> getSetting(String key, {String defaultValue = ''});
   Future<void> setSetting(String key, String value);
   Future<List<FeedbackModel>> getFeedback();
-  Future<FeedbackModel> addFeedback(String content, {String visibility = 'public'});
-  Future<FeedbackModel> updateFeedback(String id, String content, {String visibility = 'public'});
+  Future<FeedbackModel> addFeedback(
+    String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
+    String visibility = 'public',
+  });
+  Future<FeedbackModel> updateFeedback(
+    String id,
+    String content, {
+    String category = 'General Feedback',
+    String recommendation = 'yes',
+    String visibility = 'public',
+  });
   Future<void> deleteFeedback(String id);
   Future<Map<String, dynamic>> toggleFeedbackLike(String id);
 }
