@@ -22,11 +22,15 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
   }
 
   bool _addTask(PlannerProvider planner) {
-    if (!planner.addDraftTask(_taskController.text)) {
+    final names = _taskController.text
+        .split(RegExp(r'\r?\n'))
+        .where((line) => line.trim().isNotEmpty)
+        .toList();
+    if (!planner.addDraftTasks(names)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Enter a unique task name, up to 200 characters. You can add up to 30 tasks.',
+            'Use unique task names, up to 200 characters each. You can add up to 200 tasks.',
           ),
         ),
       );
@@ -61,6 +65,11 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     if (_taskController.text.trim().isNotEmpty && !_addTask(planner)) return;
     FocusScope.of(context).unfocus();
     if (await plannerAction(context, planner.generateAndSaveDraft) && mounted) {
+      if (planner.generationNotice != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(planner.generationNotice!)));
+      }
       Navigator.pop(context);
     }
   }
@@ -99,7 +108,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                         planner.isSaving
                             ? 'Saving...'
                             : planner.isGenerating
-                            ? 'Generating...'
+                            ? planner.generationLabel
                             : 'Generate plan',
                       ),
                     ),
@@ -116,202 +125,238 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 900),
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(DateFormat('EEEE, MMMM d').format(planner.draftDate)),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Tasks',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _taskController,
-                            maxLength: 200,
-                            textCapitalization: TextCapitalization.sentences,
-                            onSubmitted: (_) => _addTask(planner),
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              hintText: 'e.g. Review notes',
-                              counterText: '',
-                            ),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.all(20),
+                      sliver: SliverList.list(
+                        children: [
+                          Text(
+                            DateFormat(
+                              'EEEE, MMMM d',
+                            ).format(planner.draftDate),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filled(
-                          tooltip: 'Add task',
-                          onPressed: () => _addTask(planner),
-                          icon: const Icon(Icons.add),
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(50, 50),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Tasks',
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (planner.draftTasks.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text('Add your first task above.'),
-                      ),
-                    ...List.generate(planner.draftTasks.length, (index) {
-                      final task = planner.draftTasks[index];
-                      final durations = {
-                        0,
-                        15,
-                        30,
-                        45,
-                        60,
-                        90,
-                        120,
-                        task.durationMinutes,
-                      }.toList()..sort();
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-                          child: Column(
+                          const SizedBox(height: 12),
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      task.title,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
+                              Expanded(
+                                child: TextField(
+                                  controller: _taskController,
+                                  maxLength: 40200,
+                                  minLines: 1,
+                                  maxLines: 5,
+                                  keyboardType: TextInputType.multiline,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
+                                  onSubmitted: (_) => _addTask(planner),
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: const InputDecoration(
+                                    hintText: 'e.g. Review notes',
+                                    helperText:
+                                        'One task per line. Up to 200 tasks.',
+                                    counterText: '',
                                   ),
-                                  IconButton(
-                                    tooltip: 'Remove ${task.title}',
-                                    onPressed: () =>
-                                        planner.removeDraftTask(index),
-                                    icon: const Icon(Icons.close, size: 18),
-                                  ),
-                                ],
+                                ),
                               ),
-                              DropdownButton<int>(
-                                value: task.durationMinutes,
-                                isExpanded: true,
-                                underline: const SizedBox.shrink(),
-                                items: durations
-                                    .map(
-                                      (duration) => DropdownMenuItem(
-                                        value: duration,
-                                        child: Text(
-                                          duration == 0
-                                              ? 'Auto estimate'
-                                              : '$duration minutes',
-                                          style: const TextStyle(fontSize: 13),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value != null &&
-                                      value != task.durationMinutes) {
-                                    planner.setDraftDuration(index, value);
-                                  }
-                                },
+                              const SizedBox(width: 8),
+                              IconButton.filled(
+                                tooltip: 'Add task',
+                                onPressed: () => _addTask(planner),
+                                icon: const Icon(Icons.add),
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(50, 50),
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 20),
-                    Card(
-                      child: ListTile(
-                        title: const Text('Start time'),
-                        trailing: const Icon(Icons.schedule, size: 20),
-                        subtitle: Text(
-                          planner.displayTime(planner.draftStartTime),
-                        ),
-                        onTap: () => _pickTime(planner),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Column(
-                        children: [
-                          SwitchListTile(
-                            title: const Text('Include breaks'),
-                            value: planner.draftHasBreaks,
-                            onChanged: planner.setDraftHasBreaks,
-                          ),
-                          if (planner.draftHasBreaks)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButton<int>(
-                                      isExpanded: true,
-                                      value: planner.draftBreakCount,
-                                      items: [1, 2, 3]
-                                          .map(
-                                            (n) => DropdownMenuItem(
-                                              value: n,
-                                              child: Text(
-                                                '$n break${n == 1 ? '' : 's'}',
-                                              ),
-                                            ),
-                                          )
-                                          .toList(),
-                                      onChanged: (n) {
-                                        if (n != null) {
-                                          planner.setDraftBreakCount(n);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: DropdownButton<int>(
-                                      isExpanded: true,
-                                      value: planner.draftBreakDuration,
-                                      items:
-                                          ({
-                                                5,
-                                                10,
-                                                15,
-                                                planner.draftBreakDuration,
-                                              }.toList()..sort())
-                                              .map(
-                                                (n) => DropdownMenuItem(
-                                                  value: n,
-                                                  child: Text('$n min'),
-                                                ),
-                                              )
-                                              .toList(),
-                                      onChanged: (n) {
-                                        if (n != null) {
-                                          planner.setDraftBreakDuration(n);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          const SizedBox(height: 16),
+                          if (planner.draftTasks.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Text('Add your first task above.'),
                             ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    if (planner.isGenerating)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 16),
-                        child: LinearProgressIndicator(),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final task = planner.draftTasks[index];
+                          final durations = {
+                            0,
+                            1,
+                            5,
+                            10,
+                            15,
+                            30,
+                            45,
+                            60,
+                            90,
+                            120,
+                            task.durationMinutes,
+                          }.toList()..sort();
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          task.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Remove ${task.title}',
+                                        onPressed: () =>
+                                            planner.removeDraftTask(index),
+                                        icon: const Icon(Icons.close, size: 18),
+                                      ),
+                                    ],
+                                  ),
+                                  DropdownButton<int>(
+                                    value: task.durationMinutes,
+                                    isExpanded: true,
+                                    underline: const SizedBox.shrink(),
+                                    items: durations
+                                        .map(
+                                          (duration) => DropdownMenuItem(
+                                            value: duration,
+                                            child: Text(
+                                              duration == 0
+                                                  ? 'Auto estimate'
+                                                  : '$duration minutes',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (value) {
+                                      if (value != null &&
+                                          value != task.durationMinutes) {
+                                        planner.setDraftDuration(index, value);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }, childCount: planner.draftTasks.length),
                       ),
-                    const SizedBox(height: 24),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.all(20),
+                      sliver: SliverList.list(
+                        children: [
+                          const SizedBox(height: 20),
+                          Card(
+                            child: ListTile(
+                              title: const Text('Start time'),
+                              trailing: const Icon(Icons.schedule, size: 20),
+                              subtitle: Text(
+                                planner.displayTime(planner.draftStartTime),
+                              ),
+                              onTap: () => _pickTime(planner),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Column(
+                              children: [
+                                SwitchListTile(
+                                  title: const Text('Include breaks'),
+                                  value: planner.draftHasBreaks,
+                                  onChanged: planner.setDraftHasBreaks,
+                                ),
+                                if (planner.draftHasBreaks)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: DropdownButton<int>(
+                                            isExpanded: true,
+                                            value: planner.draftBreakCount,
+                                            items: [1, 2, 3]
+                                                .map(
+                                                  (n) => DropdownMenuItem(
+                                                    value: n,
+                                                    child: Text(
+                                                      '$n break${n == 1 ? '' : 's'}',
+                                                    ),
+                                                  ),
+                                                )
+                                                .toList(),
+                                            onChanged: (n) {
+                                              if (n != null) {
+                                                planner.setDraftBreakCount(n);
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: DropdownButton<int>(
+                                            isExpanded: true,
+                                            value: planner.draftBreakDuration,
+                                            items:
+                                                ({
+                                                      5,
+                                                      10,
+                                                      15,
+                                                      planner
+                                                          .draftBreakDuration,
+                                                    }.toList()..sort())
+                                                    .map(
+                                                      (n) => DropdownMenuItem(
+                                                        value: n,
+                                                        child: Text('$n min'),
+                                                      ),
+                                                    )
+                                                    .toList(),
+                                            onChanged: (n) {
+                                              if (n != null) {
+                                                planner.setDraftBreakDuration(
+                                                  n,
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          if (planner.isGenerating)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 16),
+                              child: LinearProgressIndicator(),
+                            ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),

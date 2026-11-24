@@ -8,6 +8,7 @@ abstract class PlannerRepository {
   Future<void> updateUserProfile(UserProfileModel profile);
   Future<PlanModel?> getPlanForDate(String date);
   Future<PlanModel> saveOrUpdatePlan(PlanModel plan, List<TaskModel> tasks);
+  Future<void> deletePlanForDate(String date);
   Future<void> toggleTaskCompletion(int id, bool completed);
   Future<void> toggleSlotCompletion(int id, bool completed);
   Future<List<Map<String, dynamic>>> getWeeklyActivity({DateTime? today});

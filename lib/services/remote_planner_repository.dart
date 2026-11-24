@@ -17,6 +17,8 @@ class RemotePlannerRepository
   final ApiClient api;
   final Map<String, int> _revisions = {};
   final Map<String, int> _draftRevisions = {};
+  final Map<String, int> _writeEpochs = {};
+  final Map<String, PlanModel?> _cachedPlans = {};
   final Map<String, Future<void>> _completionQueues = {};
   @override
   void beginDraft(String date) {
@@ -30,10 +32,11 @@ class RemotePlannerRepository
       DateFormat('yyyy-MM-dd').format(date ?? DateTime.now());
   PlanModel? _remember(Map<String, dynamic> result, String date) {
     final revision = result['revision'] as int;
+    if (revision < (_revisions[date] ?? 0)) return _cachedPlans[date];
     if (revision >= (_revisions[date] ?? 0)) {
       _revisions[date] = revision;
     }
-    if (result['plan'] == null) return null;
+    if (result['plan'] == null) return _cachedPlans[date] = null;
     final data = result['plan'] as Map<String, dynamic>;
     final tasks = (data['tasks'] as List)
         .map((t) => TaskModel.fromMap(Map<String, dynamic>.from(t as Map)))
@@ -49,12 +52,21 @@ class RemotePlannerRepository
     for (final slot in slots) {
       _slots[slot.id!] = date;
     }
-    return PlanModel.fromMap(data, tasks: tasks, scheduleSlots: slots);
+    return _cachedPlans[date] = PlanModel.fromMap(
+      data,
+      tasks: tasks,
+      scheduleSlots: slots,
+    );
   }
 
   @override
-  Future<PlanModel?> getPlanForDate(String date) async =>
-      _remember(await api.request('GET', 'plans/$date'), date);
+  Future<PlanModel?> getPlanForDate(String date) async {
+    final epoch = _writeEpochs[date] ?? 0;
+    final result = await api.request('GET', 'plans/$date');
+    if (epoch != (_writeEpochs[date] ?? 0)) return _cachedPlans[date];
+    return _remember(result, date);
+  }
+
   @override
   Future<PlanModel> saveOrUpdatePlan(
     PlanModel plan,
@@ -73,6 +85,7 @@ class RemotePlannerRepository
       },
     );
     _draftRevisions.remove(plan.planDate);
+    _writeEpochs.update(plan.planDate, (value) => value + 1, ifAbsent: () => 1);
     return _remember(result, plan.planDate)!;
   }
 
@@ -94,6 +107,7 @@ class RemotePlannerRepository
           'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         },
       );
+      _writeEpochs.update(date, (value) => value + 1, ifAbsent: () => 1);
       return _remember(result, date)!;
     });
     final settled = pending.then<void>((_) {}, onError: (Object _) {});
@@ -105,6 +119,21 @@ class RemotePlannerRepository
         _completionQueues.remove(date);
       }
     }
+  }
+
+  @override
+  Future<void> deletePlanForDate(String date) async {
+    await api.request(
+      'DELETE',
+      'plans/$date',
+      data: {'expected_revision': _revisions[date] ?? 0},
+    );
+    _revisions.remove(date);
+    _draftRevisions.remove(date);
+    _cachedPlans[date] = null;
+    _writeEpochs.update(date, (value) => value + 1, ifAbsent: () => 1);
+    _tasks.removeWhere((_, value) => value == date);
+    _slots.removeWhere((_, value) => value == date);
   }
 
   @override

@@ -17,6 +17,7 @@ class ScheduleResult {
 }
 
 class SchedulerService {
+  static const maxTasks = 200;
   static DateTime parseTimeString(String value, {DateTime? baseDate}) {
     final date = baseDate ?? DateTime.now();
     final text = value.trim().toUpperCase();
@@ -50,7 +51,7 @@ class SchedulerService {
   }) {
     var current = parseTimeString(startTimeStr);
     if (tasks.isEmpty) throw const FormatException('Add at least one task.');
-    if (tasks.length > 30 ||
+    if (tasks.length > maxTasks ||
         tasks.any(
           (t) =>
               t.title.trim().isEmpty ||
@@ -59,7 +60,7 @@ class SchedulerService {
               t.durationMinutes > 480,
         )) {
       throw const FormatException(
-        'Use up to 30 tasks, each between 1 and 480 minutes.',
+        'Use up to 200 tasks, each between 1 and 480 minutes.',
       );
     }
     final total = tasks.fold(0, (sum, task) => sum + task.durationMinutes);

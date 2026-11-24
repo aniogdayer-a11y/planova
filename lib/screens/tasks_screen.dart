@@ -9,6 +9,34 @@ import 'plan_day_screen.dart';
 
 class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
+  Future<void> _delete(
+    BuildContext context,
+    PlannerProvider planner,
+    int id,
+    String title,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete task?'),
+        content: Text(title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await plannerAction(context, () => planner.deleteTask(id));
+    }
+  }
+
   void _edit(BuildContext context, PlannerProvider planner) {
     planner.preparePlanDraft();
     Navigator.push(
@@ -52,18 +80,36 @@ class TasksScreen extends StatelessWidget {
                       children: plan.tasks
                           .map(
                             (task) => CheckboxListTile(
+                              key: ValueKey('task-${task.id}'),
                               value: task.isCompleted,
-                              onChanged: (value) {
-                                if (value == null) return;
-                                plannerAction(
-                                  context,
-                                  () => planner.setTaskCompletion(
-                                    task.id!,
-                                    value,
-                                  ),
-                                );
-                              },
+                              onChanged: planner.isSaving
+                                  ? null
+                                  : (value) {
+                                      if (value == null) return;
+                                      plannerAction(
+                                        context,
+                                        () => planner.setTaskCompletion(
+                                          task.id!,
+                                          value,
+                                        ),
+                                      );
+                                    },
                               controlAffinity: ListTileControlAffinity.leading,
+                              secondary: IconButton(
+                                tooltip: 'Delete ${task.title}',
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 20,
+                                ),
+                                onPressed: planner.isSaving
+                                    ? null
+                                    : () => _delete(
+                                        context,
+                                        planner,
+                                        task.id!,
+                                        task.title,
+                                      ),
+                              ),
                               title: Text(
                                 task.title,
                                 style: TextStyle(
@@ -82,7 +128,7 @@ class TasksScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton(
-                    onPressed: planner.isSyncingCompletions
+                    onPressed: planner.isSyncingCompletions || planner.isSaving
                         ? null
                         : () => _edit(context, planner),
                     child: const Text('Edit plan'),
@@ -108,13 +154,16 @@ class TasksScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   ...plan.scheduleSlots.map(
                     (slot) => TimelineSlotCard(
+                      key: ValueKey('slot-${slot.id}'),
                       slot: slot,
                       startLabel: planner.displayTime(slot.startTime),
                       endLabel: planner.displayTime(slot.endTime),
-                      onChanged: (value) => plannerAction(
-                        context,
-                        () => planner.setSlotCompletion(slot.id!, value),
-                      ),
+                      onChanged: planner.isSaving
+                          ? null
+                          : (value) => plannerAction(
+                              context,
+                              () => planner.setSlotCompletion(slot.id!, value),
+                            ),
                     ),
                   ),
                 ],

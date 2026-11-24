@@ -51,6 +51,12 @@ class PlannerProvider extends ChangeNotifier {
   bool get isLoadingPlan => _isLoadingPlan;
   bool _isGenerating = false;
   bool get isGenerating => _isGenerating;
+  int _generationCompleted = 0;
+  int _generationTotal = 0;
+  String get generationLabel => _generationTotal > 25
+      ? 'Planning $_generationCompleted of $_generationTotal...'
+      : 'Generating...';
+  String? get generationNotice => _gemini.notice;
   bool _isSaving = false;
   bool get isSaving => _isSaving;
   String? _error;
@@ -300,20 +306,31 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   bool addDraftTask(String title, {int duration = 0}) {
-    final clean = title.trim();
+    return addDraftTasks([title], duration: duration);
+  }
+
+  bool addDraftTasks(List<String> titles, {int duration = 0}) {
+    final clean = titles.map((title) => title.trim()).toList();
+    final names = _draftTasks.map((task) => task.title.toLowerCase()).toSet();
     if (clean.isEmpty ||
-        clean.length > 200 ||
-        _draftTasks.length >= 30 ||
-        _draftTasks.any((t) => t.title.toLowerCase() == clean.toLowerCase())) {
+        _draftTasks.length + clean.length > SchedulerService.maxTasks ||
+        clean.any(
+          (title) =>
+              title.isEmpty ||
+              title.length > 200 ||
+              !names.add(title.toLowerCase()),
+        )) {
       return false;
     }
-    _draftTasks.add(
-      TaskModel(
-        title: clean,
-        durationMinutes: duration,
-        orderIndex: _draftTasks.length,
-      ),
-    );
+    for (final title in clean) {
+      _draftTasks.add(
+        TaskModel(
+          title: title,
+          durationMinutes: duration,
+          orderIndex: _draftTasks.length,
+        ),
+      );
+    }
     notifyListeners();
     return true;
   }
@@ -376,6 +393,11 @@ class PlannerProvider extends ChangeNotifier {
               startTime: _draftStartTime,
               breakCount: _draftHasBreaks ? _draftBreakCount : 0,
               breakMinutes: _draftHasBreaks ? _draftBreakDuration : 0,
+              onProgress: (completed, total) {
+                _generationCompleted = completed;
+                _generationTotal = total;
+                notifyListeners();
+              },
             )
           : _draftTasks
                 .map(
@@ -393,6 +415,45 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   bool _submittingPlan = false;
+
+  Future<void> deleteTask(int id) async {
+    if (_isSaving || _isGenerating || _currentPlan == null) return;
+    final date = _currentPlan!.planDate;
+    _isSaving = true;
+    ++_loadVersion;
+    notifyListeners();
+    try {
+      await _completionQueue;
+      final plan = _currentPlan;
+      if (plan == null || plan.planDate != date) return;
+      final remaining = plan.tasks.where((task) => task.id != id).toList();
+      if (remaining.length == plan.tasks.length) return;
+      if (remaining.isEmpty) {
+        await _db.deletePlanForDate(date);
+        if (_currentPlan?.planDate == date) _currentPlan = null;
+      } else {
+        if (_db is DraftAwareRepository) {
+          (_db as DraftAwareRepository).beginDraft(date);
+        }
+        final focus = remaining.fold(
+          0,
+          (sum, task) => sum + task.durationMinutes,
+        );
+        final breaks = plan.hasBreaks ? plan.breakCount.clamp(0, focus - 1) : 0;
+        final saved = await _db.saveOrUpdatePlan(
+          plan.copyWith(hasBreaks: breaks > 0, breakCount: breaks),
+          remaining,
+        );
+        if (_currentPlan?.planDate == date) _currentPlan = saved;
+      }
+      notifyListeners();
+      unawaited(_syncCompletionStats());
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> generateAndSaveDraft({bool useGemini = true}) async {
     if (_submittingPlan || _isGenerating || _isSaving) return;
     _submittingPlan = true;
@@ -471,6 +532,7 @@ class PlannerProvider extends ChangeNotifier {
     bool completed, {
     required bool isTask,
   }) {
+    if (_isSaving) return Future<void>.value();
     final plan = _currentPlan;
     if (plan == null) return Future<void>.value();
     final exists = isTask

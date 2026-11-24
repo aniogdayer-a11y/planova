@@ -303,6 +303,12 @@ class DatabaseService implements PlannerRepository {
   }
 
   @override
+  Future<void> deletePlanForDate(String date) async {
+    final db = await database;
+    await db.delete('plans', where: 'plan_date = ?', whereArgs: [date]);
+  }
+
+  @override
   Future<void> toggleTaskCompletion(int id, bool completed) async {
     final db = await database;
     await db.transaction((txn) async {

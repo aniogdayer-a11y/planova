@@ -71,7 +71,9 @@ export async function accountRoutes({req,res,pathname,url,json,auth,store,cookie
     if (planMatch) {
       if (req.method === 'GET') json(200,store.getPlan(user.id,planMatch[1]));
       else if (req.method === 'PUT') {
-        const body = await readJson(req); json(200,store.savePlan(user.id,planMatch[1],body.plan,body.expected_revision));
+        const body = await readJson(req,262144); json(200,store.savePlan(user.id,planMatch[1],body.plan,body.expected_revision));
+      } else if (req.method === 'DELETE') {
+        const body = await readJson(req); json(200,store.deletePlan(user.id,planMatch[1],body.expected_revision));
       } else throw new HttpError(405,'Method not allowed.');
       return true;
     }

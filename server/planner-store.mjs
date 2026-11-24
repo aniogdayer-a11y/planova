@@ -85,7 +85,7 @@ export class PlannerStore {
   }
   savePlan(userId, date, input, expectedRevision) {
     validDate(date);
-    if (!input || !Array.isArray(input.tasks) || input.tasks.length < 1 || input.tasks.length > 30) throw new HttpError(400, 'Add between 1 and 30 tasks.');
+    if (!input || !Array.isArray(input.tasks) || input.tasks.length < 1 || input.tasks.length > 200) throw new HttpError(400, 'Add between 1 and 200 tasks.');
     const start = minutesOf(input.start_time);
     const hasBreaks = input.has_breaks === 1 || input.has_breaks === true;
     const breaks = hasBreaks ? input.break_count : 0;
@@ -157,6 +157,12 @@ export class PlannerStore {
       this.db.exec('COMMIT');
       return {plan,revision};
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  deletePlan(userId, date, revision) {
+    validDate(date);
+    const result = this.db.prepare('DELETE FROM planner_plans WHERE user_id = ? AND plan_date = ? AND revision = ?').run(userId,date,revision);
+    if (!result.changes) throw new HttpError(409,'This plan changed on another device. Reopen it before deleting.');
+    return {ok:true};
   }
   toggle(userId, kind, id, completed, revision, offset) {
     if (typeof completed !== 'boolean' || !Number.isSafeInteger(id)) throw new HttpError(400,'Invalid completion update.');

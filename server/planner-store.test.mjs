@@ -101,6 +101,22 @@ function fixture() {
   db.prepare('INSERT INTO users(id,email,name,created_at) VALUES (?,?,?,?)').run('b','b@example.test','Account B',Date.now());
   return {db,store:new PlannerStore(db)};
 }
+
+test('large plans persist and plan deletion enforces account and revision boundaries', () => {
+  const {db,store} = fixture();
+  try {
+    const plan={...input(),start_time:'12:00 AM',tasks:Array.from({length:200},(_,i)=>({title:'Task '+i,duration_minutes:1}))};
+    const saved=store.savePlan('a','2026-11-24',plan,0);
+    assert.equal(saved.plan.tasks.length,200);
+    assert.throws(()=>store.savePlan('a','2026-11-24',{...plan,tasks:[...plan.tasks,{title:'Extra',duration_minutes:1}]},saved.revision));
+    assert.throws(()=>store.deletePlan('b','2026-11-24',saved.revision));
+    assert.throws(()=>store.deletePlan('a','2026-11-24',saved.revision+1));
+    assert.equal(store.getPlan('a','2026-11-24').plan.tasks.length,200);
+    store.deletePlan('a','2026-11-24',saved.revision);
+    assert.equal(store.getPlan('a','2026-11-24').plan,null);
+    assert.equal(store.savePlan('a','2026-11-24',plan,0).revision,1);
+  } finally {db.close();}
+});
 test('plans sync across clients and remain isolated by account', () => {
   const {db,store} = fixture();
   try {
