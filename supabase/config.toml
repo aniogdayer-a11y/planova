@@ -38,5 +38,8 @@ subject = "Your Planova password was changed"
 content_path = "templates/password_changed.html"
 
 [functions.planova-api]
-verify_jwt = true
+# The function validates every bearer token with auth.getUser(). Keeping the
+# legacy gateway verifier enabled blocks newer Supabase signing-key tokens and
+# browser CORS preflight requests before the function can validate them.
+verify_jwt = false
 
