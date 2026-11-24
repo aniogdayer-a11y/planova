@@ -100,7 +100,7 @@ class _AuthScreenState extends State<AuthScreen> {
         decoration: InputDecoration(
           labelText: confirm
               ? 'Confirm password'
-              : newPassword
+              : newPassword && _reset
               ? 'New password'
               : 'Password',
           counterText: '',
