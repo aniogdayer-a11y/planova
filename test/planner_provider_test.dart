@@ -12,6 +12,21 @@ void main() {
   });
   tearDown(() => db.close());
 
+  test('Theme and suggestion likes survive reopening the planner', () async {
+    final first = PlannerProvider(database: db);
+    await first.ready;
+    await first.setColorTheme('sage');
+    await first.toggleSuggestion('short_list');
+    final second = PlannerProvider(database: db);
+    await second.ready;
+    expect(second.colorTheme, 'sage');
+    expect(second.likesSuggestion('short_list'), isTrue);
+    await second.toggleSuggestion('short_list');
+    expect(await db.getSetting('suggestion_like_short_list'), 'false');
+    first.dispose();
+    second.dispose();
+  });
+
   test('Generated plans are automatically saved and opened in Tasks', () async {
     final gemini = GeminiService(
       transport: (_, __, ___) async => GeminiHttpResponse(

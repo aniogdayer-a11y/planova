@@ -3,7 +3,7 @@ import '../theme/app_colors.dart';
 import 'planova_brand.dart';
 import 'account_avatar.dart';
 
-const _labels = ['Home', 'Tasks', 'Tips', 'Profile', 'Settings'];
+const _labels = ['Home', 'Tasks', 'Suggestions', 'Profile', 'Settings'];
 const _selectedIcons = [
   Icons.home_rounded,
   Icons.checklist_rounded,
@@ -49,7 +49,7 @@ class PlanovaNavigation extends StatelessWidget {
                 children: List.generate(_labels.length, (index) {
                   final selected = selectedIndex == index;
                   return Expanded(
-                    flex: selected ? 2 : 1,
+                    flex: selected ? 3 : 1,
                     child: Semantics(
                       button: true,
                       selected: selected,

@@ -43,11 +43,13 @@ class AutoTaskSchedulerApp extends StatelessWidget {
     if (plannerProvider != null) {
       return ChangeNotifierProvider.value(
         value: plannerProvider!,
-        child: MaterialApp(
-          title: 'Planova',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          home: const MainScaffold(),
+        child: Consumer<PlannerProvider>(
+          builder: (context, planner, _) => MaterialApp(
+            title: 'Planova',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.forPalette(planner.colorTheme),
+            home: const MainScaffold(),
+          ),
         ),
       );
     }
@@ -76,7 +78,14 @@ class AutoTaskSchedulerApp extends StatelessWidget {
             create: (_) => PlannerProvider(
               repository: RemotePlannerRepository(client: auth.api),
             ),
-            child: app,
+            child: Consumer<PlannerProvider>(
+              builder: (context, planner, _) => MaterialApp(
+                title: 'Planova',
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.forPalette(planner.colorTheme),
+                home: const MainScaffold(),
+              ),
+            ),
           );
         },
       ),

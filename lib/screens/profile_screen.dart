@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../providers/planner_provider.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_theme.dart';
 import '../widgets/page_layout.dart';
 import '../widgets/planner_actions.dart';
 import '../widgets/account_avatar.dart';
@@ -175,6 +176,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
             ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Color theme',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: AppTheme.palettes.entries
+                      .map(
+                        (entry) => ChoiceChip(
+                          avatar: CircleAvatar(
+                            backgroundColor: entry.value,
+                            radius: 10,
+                          ),
+                          label: Text(
+                            '${entry.key[0].toUpperCase()}${entry.key.substring(1)}',
+                          ),
+                          selected: planner.colorTheme == entry.key,
+                          onSelected: planner.preferenceSaving('color_theme')
+                              ? null
+                              : (_) => plannerAction(
+                                  context,
+                                  () => planner.setColorTheme(entry.key),
+                                ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 28),

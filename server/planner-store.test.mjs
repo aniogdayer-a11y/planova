@@ -5,6 +5,20 @@ import { PlannerStore } from './planner-store.mjs';
 
 const input = () => ({start_time:'9:00 AM',has_breaks:1,break_count:1,break_duration_minutes:5,
   tasks:[{title:'Design poster',duration_minutes:50},{title:'Review notes',duration_minutes:30}]});
+
+test('theme and likes are validated and isolated per account', () => {
+  const {db,store} = fixture();
+  try {
+    store.setSetting('a','color_theme','sage');
+    store.setSetting('a','suggestion_like_short_list','true');
+    assert.equal(store.settings('a').color_theme,'sage');
+    assert.equal(store.settings('a').suggestion_like_short_list,'true');
+    assert.deepEqual(store.settings('b'),{});
+    assert.throws(() => store.setSetting('a','color_theme','unknown'));
+    assert.throws(() => store.setSetting('a','suggestion_like_short_list','10'));
+    assert.throws(() => store.setSetting('a','__proto__','true'));
+  } finally { db.close(); }
+});
 function fixture() {
   const db = openAccountDatabase(':memory:');
   db.prepare('INSERT INTO users(id,email,name,created_at) VALUES (?,?,?,?)').run('a','a@example.test','Account A',Date.now());

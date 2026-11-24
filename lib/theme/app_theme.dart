@@ -3,6 +3,36 @@ import 'package:flutter/foundation.dart';
 import 'app_colors.dart';
 
 class AppTheme {
+  static const palettes = {
+    'cream': Color(0xFFF0EEDF),
+    'sage': Color(0xFFE8F0E6),
+    'lavender': Color(0xFFEEE8F5),
+    'rose': Color(0xFFF7E8EA),
+    'sky': Color(0xFFE5EFF7),
+  };
+
+  static ThemeData forPalette(String name) {
+    final base = lightTheme;
+    final background = palettes[name] ?? palettes['cream']!;
+    final surface = Color.lerp(background, Colors.white, 0.65)!;
+    final border = Color.lerp(background, AppColors.charcoal, 0.18)!;
+    return base.copyWith(
+      scaffoldBackgroundColor: background,
+      colorScheme: base.colorScheme.copyWith(
+        surface: surface,
+        primaryContainer: background,
+        secondaryContainer: background,
+      ),
+      appBarTheme: base.appBarTheme.copyWith(backgroundColor: background),
+      cardTheme: base.cardTheme.copyWith(color: surface),
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(
+        fillColor: surface,
+      ),
+      dividerTheme: base.dividerTheme.copyWith(color: border),
+      chipTheme: base.chipTheme.copyWith(selectedColor: background),
+    );
+  }
+
   static ThemeData get lightTheme {
     final base = ThemeData(
       useMaterial3: true,

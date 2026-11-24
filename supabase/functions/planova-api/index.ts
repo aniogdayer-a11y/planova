@@ -129,7 +129,14 @@ Deno.serve(async (req) => {
       return json({ settings: Object.fromEntries((data || []).map(row => [row.key, row.value])) }, 200, origin)
     }
     if (req.method === 'PUT' && path === 'settings') {
-      if (body?.key !== 'time_format' || !['12-hour', '24-hour'].includes(body?.value)) return fail('Invalid setting.', 400, origin)
+      const allowed: Record<string, string[]> = {
+        time_format: ['12-hour', '24-hour'],
+        color_theme: ['cream', 'sage', 'lavender', 'rose', 'sky'],
+        suggestion_like_short_list: ['true', 'false'],
+        suggestion_like_enough_time: ['true', 'false'],
+        suggestion_like_break: ['true', 'false'],
+      }
+      if (!Object.hasOwn(allowed, body?.key) || !allowed[body.key].includes(body?.value)) return fail('Invalid setting.', 400, origin)
       const { error } = await supabase.from('settings').upsert({ user_id: user.id, key: body.key, value: body.value })
       if (error) throw error
       return json({ ok: true }, 200, origin)

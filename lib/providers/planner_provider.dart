@@ -58,6 +58,43 @@ class PlannerProvider extends ChangeNotifier {
       List.unmodifiable(_weeklyActivity);
   bool _is24Hour = false;
   bool get is24Hour => _is24Hour;
+  String _colorTheme = 'cream';
+  String get colorTheme => _colorTheme;
+  final Set<String> _likedSuggestions = {};
+  bool likesSuggestion(String id) => _likedSuggestions.contains(id);
+  bool preferenceSaving(String key) => _pendingWrites.contains(key);
+
+  Future<void> setColorTheme(String value) async {
+    if (!['cream', 'sage', 'lavender', 'rose', 'sky'].contains(value) ||
+        preferenceSaving('color_theme')) {
+      return;
+    }
+    _pendingWrites.add('color_theme');
+    notifyListeners();
+    try {
+      await _db.setSetting('color_theme', value);
+      _colorTheme = value;
+    } finally {
+      _pendingWrites.remove('color_theme');
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleSuggestion(String id) async {
+    final key = 'suggestion_like_$id';
+    if (preferenceSaving(key)) return;
+    final liked = !_likedSuggestions.contains(id);
+    _pendingWrites.add(key);
+    notifyListeners();
+    try {
+      await _db.setSetting(key, liked ? 'true' : 'false');
+      liked ? _likedSuggestions.add(id) : _likedSuggestions.remove(id);
+    } finally {
+      _pendingWrites.remove(key);
+      notifyListeners();
+    }
+  }
+
   int _loadVersion = 0;
   final Set<String> _pendingWrites = {};
   List<TaskModel> _draftTasks = [];
@@ -77,6 +114,13 @@ class PlannerProvider extends ChangeNotifier {
     notifyListeners();
     try {
       _profile = await _db.getUserProfile();
+      _colorTheme = await _db.getSetting('color_theme', defaultValue: 'cream');
+      _likedSuggestions.clear();
+      for (final id in ['short_list', 'enough_time', 'break']) {
+        if (await _db.getSetting('suggestion_like_$id') == 'true') {
+          _likedSuggestions.add(id);
+        }
+      }
       _is24Hour =
           await _db.getSetting('time_format', defaultValue: '12-hour') ==
           '24-hour';

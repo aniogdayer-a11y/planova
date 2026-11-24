@@ -179,7 +179,14 @@ export class PlannerStore {
     return Object.fromEntries(entries.map(row => [row.key,row.value]));
   }
   setSetting(userId,key,value) {
-    if (key !== 'time_format' || !['12-hour','24-hour'].includes(value)) throw new HttpError(400,'Invalid setting.');
+    const allowed = {
+      time_format: ['12-hour','24-hour'],
+      color_theme: ['cream','sage','lavender','rose','sky'],
+      suggestion_like_short_list: ['true','false'],
+      suggestion_like_enough_time: ['true','false'],
+      suggestion_like_break: ['true','false'],
+    };
+    if (!Object.hasOwn(allowed,key) || !allowed[key].includes(value)) throw new HttpError(400,'Invalid setting.');
     this.db.prepare('INSERT INTO planner_settings VALUES (?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value = excluded.value')
       .run(userId,key,value);
   }
