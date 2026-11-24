@@ -85,7 +85,12 @@ Deno.serve(async (req) => {
     const url = new URL(req.url)
     const marker = '/planova-api/'
     const path = url.pathname.includes(marker) ? url.pathname.split(marker)[1] : ''
-    const body = ['POST', 'PUT'].includes(req.method) ? await req.json() : null
+    const rawBody = ['POST', 'PUT'].includes(req.method) ? await req.text() : ''
+    let body = null
+    if (rawBody.trim()) {
+      try { body = JSON.parse(rawBody) }
+      catch { return fail('Invalid JSON body.', 400, origin) }
+    }
 
     if (req.method === 'GET' && path === 'profile') {
       const { data, error } = await supabase.from('profiles').select('name,avatar_data').single()
