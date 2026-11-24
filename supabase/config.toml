@@ -4,6 +4,9 @@ project_id = "planova"
 site_url = "https://aniogdayer-a11y.github.io/planova/"
 additional_redirect_urls = ["https://aniogdayer-a11y.github.io/planova/**"]
 
+[auth.rate_limit]
+email_sent = 100
+
 [auth.email]
 enabled = true
 enable_confirmations = true
