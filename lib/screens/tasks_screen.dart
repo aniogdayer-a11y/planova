@@ -79,48 +79,58 @@ class TasksScreen extends StatelessWidget {
                     child: Column(
                       children: plan.tasks
                           .map(
-                            (task) => CheckboxListTile(
+                            (task) => Row(
                               key: ValueKey('task-${task.id}'),
-                              value: task.isCompleted,
-                              onChanged: planner.isSaving
-                                  ? null
-                                  : (value) {
-                                      if (value == null) return;
-                                      plannerAction(
-                                        context,
-                                        () => planner.setTaskCompletion(
-                                          task.id!,
-                                          value,
-                                        ),
-                                      );
-                                    },
-                              controlAffinity: ListTileControlAffinity.leading,
-                              secondary: IconButton(
-                                tooltip: 'Delete ${task.title}',
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 20,
-                                ),
-                                onPressed: planner.isSaving
-                                    ? null
-                                    : () => _delete(
-                                        context,
-                                        planner,
-                                        task.id!,
-                                        task.title,
+                              children: [
+                                Expanded(
+                                  child: CheckboxListTile(
+                                    value: task.isCompleted,
+                                    onChanged: planner.isSaving
+                                        ? null
+                                        : (value) {
+                                            if (value == null) return;
+                                            plannerAction(
+                                              context,
+                                              () => planner.setTaskCompletion(
+                                                task.id!,
+                                                value,
+                                              ),
+                                            );
+                                          },
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    title: Text(
+                                      task.title,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        decoration: task.isCompleted
+                                            ? TextDecoration.lineThrough
+                                            : null,
                                       ),
-                              ),
-                              title: Text(
-                                task.title,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  decoration: task.isCompleted
-                                      ? TextDecoration.lineThrough
-                                      : null,
+                                    ),
+                                    subtitle: Text(
+                                      '${task.durationMinutes} min',
+                                    ),
+                                    dense: true,
+                                  ),
                                 ),
-                              ),
-                              subtitle: Text('${task.durationMinutes} min'),
-                              dense: true,
+                                IconButton(
+                                  tooltip: 'Delete ${task.title}',
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 20,
+                                  ),
+                                  onPressed: planner.isSaving
+                                      ? null
+                                      : () => _delete(
+                                          context,
+                                          planner,
+                                          task.id!,
+                                          task.title,
+                                        ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
                             ),
                           )
                           .toList(),

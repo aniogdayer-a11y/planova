@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:auto_task_scheduler/models/task_model.dart';
+import 'package:auto_task_scheduler/main.dart';
 import 'package:auto_task_scheduler/providers/planner_provider.dart';
 import 'package:auto_task_scheduler/screens/plan_day_screen.dart';
 import 'package:auto_task_scheduler/services/database_service.dart';
@@ -39,6 +40,47 @@ GeminiHttpResponse estimate(List tasks) => GeminiHttpResponse(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('delete button supports cancel and does not toggle completion', (
+    tester,
+  ) async {
+    late DatabaseService db;
+    late PlannerProvider planner;
+    await tester.runAsync(() async {
+      db = await DatabaseService.inMemory();
+      planner = PlannerProvider(database: db);
+      await planner.ready;
+      planner.preparePlanDraft();
+      planner.addDraftTask('Review', duration: 25);
+      planner.addDraftTask('Unwinding', duration: 15);
+      await planner.generateAndSaveDraft(useGemini: false);
+    });
+    addTearDown(() async {
+      planner.dispose();
+      await tester.runAsync(db.close);
+    });
+    await tester.pumpWidget(AutoTaskSchedulerApp(plannerProvider: planner));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Delete Unwinding'));
+    await tester.pumpAndSettle();
+    expect(planner.tasksDoneCount, 0);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(planner.currentPlan!.tasks, hasLength(2));
+    await tester.tap(find.byTooltip('Delete Unwinding'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 100 && planner.currentPlan!.tasks.length != 1; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(planner.currentPlan!.tasks.single.title, 'Review');
+    expect(planner.tasksDoneCount, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   test('basic estimates are identified to the user', () async {
     final service = GeminiService(
       transport: (_, __, body) async {
