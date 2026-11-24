@@ -4,6 +4,7 @@ import 'database_connection_stub.dart'
     if (dart.library.io) 'database_connection_native.dart'
     if (dart.library.js_interop) 'database_connection_web.dart'
     as connection;
+import '../models/feedback_model.dart';
 import '../models/task_model.dart';
 import '../models/plan_model.dart';
 import '../models/schedule_slot_model.dart';
@@ -40,6 +41,13 @@ class DatabaseService implements PlannerRepository {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS slots_plan ON schedule_slots(plan_id)',
       );
+      await db.execute('''CREATE TABLE IF NOT EXISTS feedback (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT NOT NULL,
+        content TEXT NOT NULL, visibility TEXT NOT NULL, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL)''');
+      await db.execute('''CREATE TABLE IF NOT EXISTS feedback_likes (
+        feedback_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        PRIMARY KEY (feedback_id, user_id))''');
     },
   );
 
@@ -80,6 +88,13 @@ class DatabaseService implements PlannerRepository {
     await db.execute(
       'CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
     );
+    await db.execute('''CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, author_name TEXT NOT NULL,
+      content TEXT NOT NULL, visibility TEXT NOT NULL, created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL)''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS feedback_likes (
+      feedback_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY (feedback_id, user_id))''');
     await db.execute('CREATE INDEX tasks_plan ON tasks(plan_id)');
     await db.execute('CREATE INDEX slots_plan ON schedule_slots(plan_id)');
     await db.insert('user_profile', {
@@ -389,4 +404,145 @@ class DatabaseService implements PlannerRepository {
         'key': key,
         'value': value,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+  @override
+  Future<List<FeedbackModel>> getFeedback() async {
+    final db = await database;
+    var rows = await db.query('feedback', orderBy: 'created_at DESC');
+    if (rows.isEmpty) {
+      final now = DateTime.now().toIso8601String();
+      final defaults = [
+        {'id': 'fb-1', 'content': 'Start with the tasks you can realistically finish today.'},
+        {'id': 'fb-2', 'content': 'Leave a little room between tasks so you do not have to rush.'},
+        {'id': 'fb-3', 'content': 'Add a short break between focus sessions.'},
+      ];
+      for (final d in defaults) {
+        await db.insert('feedback', {
+          'id': d['id']!,
+          'user_id': '1',
+          'author_name': 'Planova',
+          'content': d['content']!,
+          'visibility': 'public',
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      rows = await db.query('feedback', orderBy: 'created_at DESC');
+    }
+    final likes = await db.query('feedback_likes');
+    final counts = <String, int>{};
+    final myLikes = <String>{};
+    for (final l in likes) {
+      final fbId = l['feedback_id'] as String;
+      counts[fbId] = (counts[fbId] ?? 0) + 1;
+      if (l['user_id'] == '1') myLikes.add(fbId);
+    }
+    return rows.map((r) {
+      final id = r['id'] as String;
+      return FeedbackModel.fromMap({
+        ...r,
+        'likes_count': counts[id] ?? 0,
+        'is_liked_by_me': myLikes.contains(id),
+        'is_mine': r['user_id'] == '1',
+      });
+    }).toList();
+  }
+
+  @override
+  Future<FeedbackModel> addFeedback(
+    String content, {
+    String visibility = 'public',
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final id = 'fb_${DateTime.now().microsecondsSinceEpoch}';
+    final profile = await getUserProfile();
+    final item = {
+      'id': id,
+      'user_id': '1',
+      'author_name': profile.name.isNotEmpty ? profile.name : 'Planova User',
+      'content': content.trim(),
+      'visibility': visibility,
+      'created_at': now,
+      'updated_at': now,
+    };
+    await db.insert('feedback', item);
+    return FeedbackModel.fromMap({
+      ...item,
+      'likes_count': 0,
+      'is_liked_by_me': false,
+      'is_mine': true,
+    });
+  }
+
+  @override
+  Future<FeedbackModel> updateFeedback(
+    String id,
+    String content, {
+    String visibility = 'public',
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final rows = await db.query('feedback', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw Exception('Feedback not found');
+    final existing = rows.first;
+    final updated = {
+      ...existing,
+      'content': content.trim(),
+      'visibility': visibility,
+      'updated_at': now,
+    };
+    await db.update('feedback', updated, where: 'id = ?', whereArgs: [id]);
+    final likes = await db.query(
+      'feedback_likes',
+      where: 'feedback_id = ?',
+      whereArgs: [id],
+    );
+    final isLiked = likes.any((l) => l['user_id'] == '1');
+    return FeedbackModel.fromMap({
+      ...updated,
+      'likes_count': likes.length,
+      'is_liked_by_me': isLiked,
+      'is_mine': true,
+    });
+  }
+
+  @override
+  Future<void> deleteFeedback(String id) async {
+    final db = await database;
+    await db.delete('feedback', where: 'id = ?', whereArgs: [id]);
+    await db.delete('feedback_likes', where: 'feedback_id = ?', whereArgs: [id]);
+  }
+
+  @override
+  Future<Map<String, dynamic>> toggleFeedbackLike(String id) async {
+    final db = await database;
+    final existing = await db.query(
+      'feedback_likes',
+      where: 'feedback_id = ? AND user_id = ?',
+      whereArgs: [id, '1'],
+    );
+    if (existing.isNotEmpty) {
+      await db.delete(
+        'feedback_likes',
+        where: 'feedback_id = ? AND user_id = ?',
+        whereArgs: [id, '1'],
+      );
+    } else {
+      await db.insert('feedback_likes', {
+        'feedback_id': id,
+        'user_id': '1',
+        'created_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    final allLikes = await db.query(
+      'feedback_likes',
+      where: 'feedback_id = ?',
+      whereArgs: [id],
+    );
+    return {
+      'is_liked_by_me': existing.isEmpty,
+      'likes_count': allLikes.length,
+    };
+  }
 }

@@ -3,7 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const cors = (origin: string | null) => ({
   'Access-Control-Allow-Origin': origin || '*',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Vary': 'Origin',
 })
 const json = (body: unknown, status = 200, origin: string | null = null) =>
@@ -190,6 +190,127 @@ Deno.serve(async (req) => {
       for (const row of data || []) for (const task of row.data.tasks || []) if (task.is_completed && task.completed_at) { const date = String(task.completed_at).slice(0, 10); counts.set(date, (counts.get(date) || 0) + 1) }
       const weekly = Array.from({ length: 7 }, (_, index) => { const date = new Date(today + 'T00:00:00Z'); date.setUTCDate(date.getUTCDate() - 6 + index); const key = date.toISOString().slice(0, 10); return { date: key, tasks_completed: counts.get(key) || 0 } })
       return json({ weekly }, 200, origin)
+    }
+    if (req.method === 'GET' && path === 'feedback') {
+      const { data: rows, error: fbError } = await supabase
+        .from('feedback')
+        .select('id, user_id, author_name, content, visibility, created_at, updated_at')
+        .order('created_at', { ascending: false })
+      if (fbError) throw fbError
+
+      let items = rows || []
+      if (items.length === 0) {
+        const { data: inserted } = await supabase
+          .from('feedback')
+          .insert([
+            { user_id: user.id, author_name: 'Planova', content: 'Start with the tasks you can realistically finish today.', visibility: 'public' },
+            { user_id: user.id, author_name: 'Planova', content: 'Leave a little room between tasks so you do not have to rush.', visibility: 'public' },
+            { user_id: user.id, author_name: 'Planova', content: 'Add a short break between focus sessions.', visibility: 'public' }
+          ])
+          .select()
+        if (inserted && inserted.length > 0) items = inserted
+      }
+
+      const { data: likes, error: likesError } = await supabase
+        .from('feedback_likes')
+        .select('feedback_id, user_id')
+      if (likesError) throw likesError
+
+      const counts = new Map<string, number>()
+      const likedSet = new Set<string>()
+      for (const row of (likes || [])) {
+        counts.set(row.feedback_id, (counts.get(row.feedback_id) || 0) + 1)
+        if (row.user_id === user.id) likedSet.add(row.feedback_id)
+      }
+
+      const feedback = items.map((item: any) => ({
+        ...item,
+        likes_count: counts.get(item.id) || 0,
+        is_liked_by_me: likedSet.has(item.id),
+        is_mine: item.user_id === user.id
+      }))
+      return json({ feedback }, 200, origin)
+    }
+    if (req.method === 'POST' && path === 'feedback') {
+      const content = String(body?.content || '').trim()
+      const visibility = body?.visibility === 'private' ? 'private' : 'public'
+      if (!content || content.length > 1000) return fail('Feedback must be between 1 and 1000 characters.', 400, origin)
+      const { data: profile } = await supabase.from('profiles').select('name').eq('user_id', user.id).maybeSingle()
+      const author_name = profile?.name || 'Planova User'
+
+      const { data: item, error: insError } = await supabase
+        .from('feedback')
+        .insert({ user_id: user.id, author_name, content, visibility })
+        .select()
+        .single()
+      if (insError) throw insError
+      return json({
+        feedback: {
+          ...item,
+          likes_count: 0,
+          is_liked_by_me: false,
+          is_mine: true
+        }
+      }, 201, origin)
+    }
+    if (req.method === 'PUT' && path.startsWith('feedback/') && !path.endsWith('/like')) {
+      const id = path.slice('feedback/'.length)
+      const content = String(body?.content || '').trim()
+      const visibility = body?.visibility === 'private' ? 'private' : 'public'
+      if (!content || content.length > 1000) return fail('Feedback must be between 1 and 1000 characters.', 400, origin)
+
+      const { data: item, error: updError } = await supabase
+        .from('feedback')
+        .update({ content, visibility, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .maybeSingle()
+      if (updError) throw updError
+      if (!item) return fail('Feedback not found or unauthorized.', 404, origin)
+
+      const { count } = await supabase.from('feedback_likes').select('*', { count: 'exact', head: true }).eq('feedback_id', id)
+      const { data: myLike } = await supabase.from('feedback_likes').select('feedback_id').eq('feedback_id', id).eq('user_id', user.id).maybeSingle()
+
+      return json({
+        feedback: {
+          ...item,
+          likes_count: count || 0,
+          is_liked_by_me: Boolean(myLike),
+          is_mine: true
+        }
+      }, 200, origin)
+    }
+    if (req.method === 'DELETE' && path.startsWith('feedback/') && !path.endsWith('/like')) {
+      const id = path.slice('feedback/'.length)
+      const { error: delError } = await supabase
+        .from('feedback')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+      if (delError) throw delError
+      return json({ ok: true }, 200, origin)
+    }
+    if (req.method === 'POST' && path.startsWith('feedback/') && path.endsWith('/like')) {
+      const id = path.slice('feedback/'.length, path.length - '/like'.length)
+      const { data: existing } = await supabase
+        .from('feedback_likes')
+        .select('feedback_id')
+        .eq('feedback_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from('feedback_likes').delete().eq('feedback_id', id).eq('user_id', user.id)
+      } else {
+        await supabase.from('feedback_likes').insert({ feedback_id: id, user_id: user.id })
+      }
+
+      const { count } = await supabase.from('feedback_likes').select('*', { count: 'exact', head: true }).eq('feedback_id', id)
+      return json({
+        is_liked_by_me: !existing,
+        likes_count: count || 0
+      }, 200, origin)
     }
     if (req.method === 'POST' && path === 'generate') {
       const apiKey = Deno.env.get('GEMINI_API_KEY'); if (!apiKey) return fail('Planning is not configured.', 503, origin)

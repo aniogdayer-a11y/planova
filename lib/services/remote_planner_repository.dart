@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import '../models/feedback_model.dart';
 import '../models/plan_model.dart';
 import '../models/task_model.dart';
 import '../models/schedule_slot_model.dart';
@@ -129,5 +130,55 @@ class RemotePlannerRepository
   @override
   Future<void> setSetting(String key, String value) async {
     await api.request('PUT', 'settings', data: {'key': key, 'value': value});
+  }
+
+  @override
+  Future<List<FeedbackModel>> getFeedback() async {
+    final result = await api.request('GET', 'feedback');
+    return (result['feedback'] as List)
+        .map((e) => FeedbackModel.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  @override
+  Future<FeedbackModel> addFeedback(
+    String content, {
+    String visibility = 'public',
+  }) async {
+    final result = await api.request(
+      'POST',
+      'feedback',
+      data: {'content': content, 'visibility': visibility},
+    );
+    return FeedbackModel.fromMap(
+      Map<String, dynamic>.from(result['feedback'] as Map),
+    );
+  }
+
+  @override
+  Future<FeedbackModel> updateFeedback(
+    String id,
+    String content, {
+    String visibility = 'public',
+  }) async {
+    final result = await api.request(
+      'PUT',
+      'feedback/$id',
+      data: {'content': content, 'visibility': visibility},
+    );
+    return FeedbackModel.fromMap(
+      Map<String, dynamic>.from(result['feedback'] as Map),
+    );
+  }
+
+  @override
+  Future<void> deleteFeedback(String id) async {
+    await api.request('DELETE', 'feedback/$id');
+  }
+
+  @override
+  Future<Map<String, dynamic>> toggleFeedbackLike(String id) async {
+    final result = await api.request('POST', 'feedback/$id/like');
+    return Map<String, dynamic>.from(result);
   }
 }

@@ -1,3 +1,4 @@
+import '../models/feedback_model.dart';
 import '../models/plan_model.dart';
 import '../models/task_model.dart';
 import '../models/user_profile_model.dart';
@@ -12,6 +13,11 @@ abstract class PlannerRepository {
   Future<List<Map<String, dynamic>>> getWeeklyActivity({DateTime? today});
   Future<String> getSetting(String key, {String defaultValue = ''});
   Future<void> setSetting(String key, String value);
+  Future<List<FeedbackModel>> getFeedback();
+  Future<FeedbackModel> addFeedback(String content, {String visibility = 'public'});
+  Future<FeedbackModel> updateFeedback(String id, String content, {String visibility = 'public'});
+  Future<void> deleteFeedback(String id);
+  Future<Map<String, dynamic>> toggleFeedbackLike(String id);
 }
 
 abstract class DraftAwareRepository {

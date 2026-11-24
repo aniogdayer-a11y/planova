@@ -19,6 +19,57 @@ test('theme and likes are validated and isolated per account', () => {
     assert.throws(() => store.setSetting('a','__proto__','true'));
   } finally { db.close(); }
 });
+
+test('feedback submission, visibility, likes, editing and deletion work and isolate permissions', () => {
+  const {db,store} = fixture();
+  try {
+    // List initial suggestions
+    const initial = store.listFeedback('a');
+    assert.ok(initial.length >= 3);
+    assert.equal(initial[0].likes_count, 0);
+    assert.equal(initial[0].is_liked_by_me, false);
+
+    // Create feedback
+    const created = store.addFeedback('a', 'Great planning assistant!', 'public');
+    assert.equal(created.content, 'Great planning assistant!');
+    assert.equal(created.is_mine, true);
+
+    // Visible to b
+    const listB = store.listFeedback('b');
+    const itemInB = listB.find(f => f.id === created.id);
+    assert.ok(itemInB);
+    assert.equal(itemInB.is_mine, false);
+
+    // Like by b
+    const liked = store.toggleFeedbackLike('b', created.id);
+    assert.equal(liked.is_liked_by_me, true);
+    assert.equal(liked.likes_count, 1);
+
+    // Prevent duplicate like: liking again should toggle unlike
+    const unliked = store.toggleFeedbackLike('b', created.id);
+    assert.equal(unliked.is_liked_by_me, false);
+    assert.equal(unliked.likes_count, 0);
+
+    // Like again
+    store.toggleFeedbackLike('b', created.id);
+
+    // Update by owner 'a'
+    const updated = store.updateFeedback('a', created.id, 'Updated content');
+    assert.equal(updated.content, 'Updated content');
+    assert.equal(updated.likes_count, 1);
+
+    // Update by non-owner 'b' throws 403
+    assert.throws(() => store.updateFeedback('b', created.id, 'Hacked!'), {status: 403});
+
+    // Delete by non-owner 'b' throws 403
+    assert.throws(() => store.deleteFeedback('b', created.id), {status: 403});
+
+    // Delete by owner 'a' succeeds
+    store.deleteFeedback('a', created.id);
+    const afterDelete = store.listFeedback('a');
+    assert.ok(!afterDelete.some(f => f.id === created.id));
+  } finally { db.close(); }
+});
 function fixture() {
   const db = openAccountDatabase(':memory:');
   db.prepare('INSERT INTO users(id,email,name,created_at) VALUES (?,?,?,?)').run('a','a@example.test','Account A',Date.now());

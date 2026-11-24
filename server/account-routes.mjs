@@ -14,7 +14,7 @@ export async function readJson(req, limit = 32_768) {
 }
 export async function accountRoutes({req,res,pathname,url,json,auth,store,cookieSecure}) {
   const isAuth = pathname.startsWith('/api/auth/');
-  const isData = /^\/api\/(plans|tasks|slots|profile|settings|activity)(\/|$)/.test(pathname);
+  const isData = /^\/api\/(plans|tasks|slots|profile|settings|activity|feedback)(\/|$)/.test(pathname);
   if (!isAuth && !isData) return false;
   try {
     if (!auth) throw new HttpError(503,'Account service is unavailable.');
@@ -80,6 +80,29 @@ export async function accountRoutes({req,res,pathname,url,json,auth,store,cookie
       const body = await readJson(req);
       json(200,store.toggle(user.id,toggleMatch[1] === 'tasks' ? 'task':'slot',Number(toggleMatch[2]),
         body.completed,body.expected_revision,body.timezone_offset_minutes));
+      return true;
+    }
+    if (pathname === '/api/feedback') {
+      if (req.method === 'GET') json(200, {feedback: store.listFeedback(user.id)});
+      else if (req.method === 'POST') {
+        const body = await readJson(req);
+        json(201, {feedback: store.addFeedback(user.id, body.content, body.visibility)});
+      } else throw new HttpError(405, 'Method not allowed.');
+      return true;
+    }
+    const fbLikeMatch = pathname.match(/^\/api\/feedback\/([^\/]+)\/like$/);
+    if (fbLikeMatch && req.method === 'POST') {
+      json(200, store.toggleFeedbackLike(user.id, fbLikeMatch[1]));
+      return true;
+    }
+    const fbItemMatch = pathname.match(/^\/api\/feedback\/([^\/]+)$/);
+    if (fbItemMatch) {
+      if (req.method === 'PUT') {
+        const body = await readJson(req);
+        json(200, {feedback: store.updateFeedback(user.id, fbItemMatch[1], body.content, body.visibility)});
+      } else if (req.method === 'DELETE') {
+        json(200, store.deleteFeedback(user.id, fbItemMatch[1]));
+      } else throw new HttpError(405, 'Method not allowed.');
       return true;
     }
     throw new HttpError(404,'Not found.');

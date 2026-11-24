@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/feedback_model.dart';
 import '../models/task_model.dart';
 import '../models/plan_model.dart';
 import '../models/user_profile_model.dart';
@@ -64,6 +65,66 @@ class PlannerProvider extends ChangeNotifier {
   bool likesSuggestion(String id) => _likedSuggestions.contains(id);
   bool preferenceSaving(String key) => _pendingWrites.contains(key);
 
+  List<FeedbackModel> _feedbackList = [];
+  List<FeedbackModel> get feedbackList => List.unmodifiable(_feedbackList);
+  bool _loadingFeedback = false;
+  bool get loadingFeedback => _loadingFeedback;
+
+  Future<void> loadFeedback() async {
+    _loadingFeedback = true;
+    notifyListeners();
+    try {
+      _feedbackList = await _db.getFeedback();
+    } catch (_) {
+    } finally {
+      _loadingFeedback = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addFeedback(String content, {String visibility = 'public'}) async {
+    final clean = content.trim();
+    if (clean.isEmpty) return;
+    final item = await _db.addFeedback(clean, visibility: visibility);
+    _feedbackList = [item, ..._feedbackList];
+    notifyListeners();
+  }
+
+  Future<void> updateFeedback(String id, String content, {String visibility = 'public'}) async {
+    final clean = content.trim();
+    if (clean.isEmpty) return;
+    final updated = await _db.updateFeedback(id, clean, visibility: visibility);
+    _feedbackList = _feedbackList.map((f) => f.id == id ? updated : f).toList();
+    notifyListeners();
+  }
+
+  Future<void> deleteFeedback(String id) async {
+    await _db.deleteFeedback(id);
+    _feedbackList = _feedbackList.where((f) => f.id != id).toList();
+    notifyListeners();
+  }
+
+  Future<void> toggleFeedbackLike(String id) async {
+    final key = 'feedback_like_$id';
+    if (_pendingWrites.contains(key)) return;
+    _pendingWrites.add(key);
+    notifyListeners();
+    try {
+      final res = await _db.toggleFeedbackLike(id);
+      final isLiked = res['is_liked_by_me'] as bool? ?? false;
+      final count = (res['likes_count'] as num?)?.toInt() ?? 0;
+      _feedbackList = _feedbackList.map((f) {
+        if (f.id == id) {
+          return f.copyWith(isLikedByMe: isLiked, likesCount: count);
+        }
+        return f;
+      }).toList();
+    } finally {
+      _pendingWrites.remove(key);
+      notifyListeners();
+    }
+  }
+
   Future<void> setColorTheme(String value) async {
     if (!['cream', 'sage', 'lavender', 'rose', 'sky'].contains(value) ||
         preferenceSaving('color_theme')) {
@@ -124,6 +185,7 @@ class PlannerProvider extends ChangeNotifier {
       _is24Hour =
           await _db.getSetting('time_format', defaultValue: '12-hour') ==
           '24-hour';
+      await loadFeedback();
       await _refreshStats();
       await loadPlanForSelectedDate();
     } catch (_) {
@@ -137,6 +199,7 @@ class PlannerProvider extends ChangeNotifier {
   Future<void> refresh() async {
     await loadPlanForSelectedDate();
     await _refreshStats();
+    await loadFeedback();
     notifyListeners();
   }
 
