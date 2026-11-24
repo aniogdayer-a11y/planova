@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createIdAllocator } from './entity_ids.ts'
 
 const cors = (origin: string | null) => ({
   'Access-Control-Allow-Origin': origin || '*',
@@ -26,8 +27,6 @@ const timeOf = (value: number) => {
   const hour = Math.floor(value / 60) % 24
   return `${hour % 12 || 12}:${String(value % 60).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`
 }
-const entityId = () => Math.floor(Date.now() * 100 + Math.random() * 99)
-
 function buildPlan(date: string, input: any, old: any = null) {
   const tasksInput = input?.tasks
   if (!Array.isArray(tasksInput) || tasksInput.length < 1 || tasksInput.length > 30) throw new Error('Add between 1 and 30 tasks.')
@@ -37,6 +36,12 @@ function buildPlan(date: string, input: any, old: any = null) {
   const breakMinutes = hasBreaks ? Number(input.break_duration_minutes) : 0
   if (!Number.isInteger(breakCount) || breakCount < 0 || breakCount > 3 || !Number.isInteger(breakMinutes) || (breakCount > 0 && (breakMinutes < 1 || breakMinutes > 60))) throw new Error('Check your break settings.')
   const seen = new Set<string>()
+  const nextId = createIdAllocator([
+    ...(old?.tasks || []).map((task: any) => task.id),
+    ...(old?.schedule_slots || []).map((slot: any) => slot.id),
+    ...(old?.id ? [old.id] : []),
+  ])
+  const planId = old?.id || nextId()
   const tasks = tasksInput.map((item: any, index: number) => {
     const title = typeof item.title === 'string' ? item.title.trim() : ''
     const duration = Number(item.duration_minutes)
@@ -44,7 +49,7 @@ function buildPlan(date: string, input: any, old: any = null) {
     seen.add(title.toLowerCase())
     const previous = old?.tasks?.find((task: any) => task.id === item.id)
     const unchanged = previous && previous.title === title && previous.duration_minutes === duration
-    return { id: previous?.id || entityId() + index, plan_id: old?.id || entityId(), title, duration_minutes: duration, order_index: index, is_completed: unchanged ? previous.is_completed : 0, completed_at: unchanged ? previous.completed_at : null }
+    return { id: previous?.id || nextId(), plan_id: planId, title, duration_minutes: duration, order_index: index, is_completed: unchanged ? previous.is_completed : 0, completed_at: unchanged ? previous.completed_at : null }
   })
   const total = tasks.reduce((sum: number, task: any) => sum + task.duration_minutes, 0)
   if (start + total + breakCount * breakMinutes > 1440) throw new Error('This plan goes past midnight. Shorten the tasks or start earlier.')
@@ -56,10 +61,10 @@ function buildPlan(date: string, input: any, old: any = null) {
     while (remaining > 0) {
       const untilBreak = used < breakCount ? interval * (used + 1) - focus : remaining
       const duration = Math.min(remaining, Math.max(1, untilBreak))
-      slots.push({ id: entityId() + slots.length, plan_id: task.plan_id, task_id: task.id, slot_type: 'focus', title: task.title, subtitle: `Focus session ${++session}`, start_time: timeOf(current), end_time: timeOf(current + duration), duration_minutes: duration, order_index: slots.length, is_completed: task.is_completed })
+      slots.push({ id: nextId(), plan_id: task.plan_id, task_id: task.id, slot_type: 'focus', title: task.title, subtitle: `Focus session ${++session}`, start_time: timeOf(current), end_time: timeOf(current + duration), duration_minutes: duration, order_index: slots.length, is_completed: task.is_completed })
       current += duration; remaining -= duration; focus += duration
       if (used < breakCount && focus >= interval * (used + 1)) {
-        slots.push({ id: entityId() + slots.length, plan_id: task.plan_id, task_id: null, slot_type: 'break', title: 'Take a break', subtitle: 'Break', start_time: timeOf(current), end_time: timeOf(current + breakMinutes), duration_minutes: breakMinutes, order_index: slots.length, is_completed: 0 })
+        slots.push({ id: nextId(), plan_id: task.plan_id, task_id: null, slot_type: 'break', title: 'Take a break', subtitle: 'Break', start_time: timeOf(current), end_time: timeOf(current + breakMinutes), duration_minutes: breakMinutes, order_index: slots.length, is_completed: 0 })
         current += breakMinutes; used++
       }
     }
