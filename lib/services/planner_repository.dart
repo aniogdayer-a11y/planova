@@ -35,6 +35,11 @@ abstract class DraftAwareRepository {
   void beginDraft(String date);
 }
 
+abstract class CompletionRepository {
+  Future<PlanModel> completeTask(int id, bool completed);
+  Future<PlanModel> completeSlot(int id, bool completed);
+}
+
 abstract class AvatarRepository {
   Future<void> updateAvatar(List<int>? bytes);
 }

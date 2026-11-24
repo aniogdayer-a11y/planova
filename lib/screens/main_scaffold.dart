@@ -48,7 +48,12 @@ class _MainScaffoldState extends State<MainScaffold>
   Future<void> _refresh() async {
     if (!mounted || _refreshing) return;
     final planner = context.read<PlannerProvider>();
-    if (planner.isLoading || planner.isGenerating || planner.isSaving) return;
+    if (planner.isLoading ||
+        planner.isGenerating ||
+        planner.isSaving ||
+        planner.isSyncingCompletions) {
+      return;
+    }
     _refreshing = true;
     try {
       await planner.refresh();

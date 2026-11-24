@@ -1,13 +1,24 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/feedback_model.dart';
 import '../models/task_model.dart';
 import '../models/plan_model.dart';
+import '../models/schedule_slot_model.dart';
 import '../models/user_profile_model.dart';
 import '../services/database_service.dart';
 import '../services/gemini_service.dart';
 import '../services/scheduler_service.dart';
 import '../services/planner_repository.dart';
+
+class _CompletionChange {
+  final String date;
+  final int id;
+  final bool isTask;
+  final bool completed;
+  final String timestamp = DateTime.now().toIso8601String();
+  _CompletionChange(this.date, this.id, this.isTask, this.completed);
+}
 
 class PlannerProvider extends ChangeNotifier {
   final PlannerRepository _db;
@@ -184,6 +195,10 @@ class PlannerProvider extends ChangeNotifier {
 
   int _loadVersion = 0;
   final Set<String> _pendingWrites = {};
+  final Map<String, PlanModel> _completionBases = {};
+  final List<_CompletionChange> _completionChanges = [];
+  Future<void> _completionQueue = Future<void>.value();
+  bool get isSyncingCompletions => _completionChanges.isNotEmpty;
   List<TaskModel> _draftTasks = [];
   List<TaskModel> get draftTasks => List.unmodifiable(_draftTasks);
   String _draftStartTime = '9:00 AM';
@@ -223,6 +238,7 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    if (isSyncingCompletions) return;
     await loadPlanForSelectedDate();
     await _refreshStats();
     await loadFeedback();
@@ -242,8 +258,13 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   Future<void> loadPlanForSelectedDate() async {
-    final version = ++_loadVersion;
     final date = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    if (_completionBases.containsKey(date)) {
+      _renderCompletions(date);
+      notifyListeners();
+      return;
+    }
+    final version = ++_loadVersion;
     _isLoadingPlan = _currentPlan == null;
     notifyListeners();
     try {
@@ -410,18 +431,100 @@ class PlannerProvider extends ChangeNotifier {
     }
   }
 
+  void _renderCompletions(String date) {
+    var plan = _completionBases[date]!;
+    for (final change in _completionChanges.where((c) => c.date == date)) {
+      final slots = plan.scheduleSlots.map((slot) {
+        final affected = change.isTask
+            ? slot.taskId == change.id && slot.slotType == SlotType.focus
+            : slot.id == change.id;
+        return affected ? slot.copyWith(isCompleted: change.completed) : slot;
+      }).toList();
+      final changedSlot = change.isTask
+          ? null
+          : plan.scheduleSlots.where((s) => s.id == change.id).firstOrNull;
+      final taskId = change.isTask ? change.id : changedSlot?.taskId;
+      final tasks = plan.tasks.map((task) {
+        if (task.id != taskId) return task;
+        final completed = change.isTask
+            ? change.completed
+            : slots
+                  .where(
+                    (s) => s.taskId == taskId && s.slotType == SlotType.focus,
+                  )
+                  .every((s) => s.isCompleted);
+        return task.copyWith(
+          isCompleted: completed,
+          completedAt: task.completedAt ?? change.timestamp,
+        );
+      }).toList();
+      plan = plan.copyWith(tasks: tasks, scheduleSlots: slots);
+    }
+    if (date == DateFormat('yyyy-MM-dd').format(_selectedDate)) {
+      _currentPlan = plan;
+      _isLoadingPlan = false;
+    }
+  }
+
   Future<void> _writeCompletion(
-    String key,
-    Future<void> Function() write,
-  ) async {
-    if (!_pendingWrites.add(key)) return;
+    int id,
+    bool completed, {
+    required bool isTask,
+  }) {
+    final plan = _currentPlan;
+    if (plan == null) return Future<void>.value();
+    final exists = isTask
+        ? plan.tasks.any((t) => t.id == id)
+        : plan.scheduleSlots.any((s) => s.id == id);
+    if (!exists) return Future<void>.value();
+    final date = plan.planDate;
+    final change = _CompletionChange(date, id, isTask, completed);
+    _completionBases.putIfAbsent(date, () => plan);
+    _completionChanges.add(change);
+    ++_loadVersion; // An older refresh must not replace the immediate change.
+    _renderCompletions(date);
+    notifyListeners();
+
+    final pending = _completionQueue.then((_) async {
+      try {
+        PlanModel? saved;
+        if (_db is CompletionRepository) {
+          final repository = _db as CompletionRepository;
+          saved = isTask
+              ? await repository.completeTask(id, completed)
+              : await repository.completeSlot(id, completed);
+        } else {
+          if (isTask) {
+            await _db.toggleTaskCompletion(id, completed);
+          } else {
+            await _db.toggleSlotCompletion(id, completed);
+          }
+          saved = await _db.getPlanForDate(date);
+        }
+        if (saved != null) _completionBases[date] = saved;
+      } finally {
+        // Reapply later clicks over the confirmed state; a failed click rolls
+        // back without erasing another task's successful or pending changes.
+        _completionChanges.remove(change);
+        _renderCompletions(date);
+        if (!_completionChanges.any((c) => c.date == date)) {
+          _completionBases.remove(date);
+        }
+        notifyListeners();
+        if (!isSyncingCompletions) unawaited(_syncCompletionStats());
+      }
+    });
+    _completionQueue = pending.then<void>((_) {}, onError: (Object _) {});
+    return pending;
+  }
+
+  Future<void> _syncCompletionStats() async {
     try {
-      await write();
-      await loadPlanForSelectedDate();
       await _refreshStats();
-    } finally {
-      _pendingWrites.remove(key);
       notifyListeners();
+    } catch (_) {
+      // A stats refresh failure must not undo a successfully saved checkbox.
+      // The regular background sync retries these totals.
     }
   }
 
@@ -433,10 +536,7 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   Future<void> setTaskCompletion(int id, bool completed) async {
-    await _writeCompletion(
-      'task:$id',
-      () => _db.toggleTaskCompletion(id, completed),
-    );
+    await _writeCompletion(id, completed, isTask: true);
   }
 
   Future<void> toggleSlotCompletion(int id) async {
@@ -449,10 +549,7 @@ class PlannerProvider extends ChangeNotifier {
   }
 
   Future<void> setSlotCompletion(int id, bool completed) async {
-    await _writeCompletion(
-      'slot:$id',
-      () => _db.toggleSlotCompletion(id, completed),
-    );
+    await _writeCompletion(id, completed, isTask: false);
   }
 
   Future<void> toggleTimeFormat(bool value) async {

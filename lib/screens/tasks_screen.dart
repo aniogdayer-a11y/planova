@@ -82,7 +82,9 @@ class TasksScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton(
-                    onPressed: () => _edit(context, planner),
+                    onPressed: planner.isSyncingCompletions
+                        ? null
+                        : () => _edit(context, planner),
                     child: const Text('Edit plan'),
                   ),
                 ],

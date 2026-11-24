@@ -9,7 +9,11 @@ import 'api_client.dart';
 import 'planner_repository.dart';
 
 class RemotePlannerRepository
-    implements PlannerRepository, DraftAwareRepository, AvatarRepository {
+    implements
+        PlannerRepository,
+        DraftAwareRepository,
+        AvatarRepository,
+        CompletionRepository {
   final ApiClient api;
   final Map<String, int> _revisions = {};
   final Map<String, int> _draftRevisions = {};
@@ -25,7 +29,10 @@ class RemotePlannerRepository
   String _today([DateTime? date]) =>
       DateFormat('yyyy-MM-dd').format(date ?? DateTime.now());
   PlanModel? _remember(Map<String, dynamic> result, String date) {
-    _revisions[date] = result['revision'] as int;
+    final revision = result['revision'] as int;
+    if (revision >= (_revisions[date] ?? 0)) {
+      _revisions[date] = revision;
+    }
     if (result['plan'] == null) return null;
     final data = result['plan'] as Map<String, dynamic>;
     final tasks = (data['tasks'] as List)
@@ -69,7 +76,7 @@ class RemotePlannerRepository
     return _remember(result, plan.planDate)!;
   }
 
-  Future<void> _toggle(String kind, int id, bool completed) async {
+  Future<PlanModel> _toggle(String kind, int id, bool completed) async {
     final date = (kind == 'tasks' ? _tasks : _slots)[id];
     if (date == null) {
       throw const ApiException(404, 'Refresh this plan and try again.');
@@ -87,23 +94,34 @@ class RemotePlannerRepository
           'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         },
       );
-      _remember(result, date);
+      return _remember(result, date)!;
     });
-    _completionQueues[date] = pending;
+    final settled = pending.then<void>((_) {}, onError: (Object _) {});
+    _completionQueues[date] = settled;
     try {
-      await pending;
+      return await pending;
     } finally {
-      if (identical(_completionQueues[date], pending)) {
+      if (identical(_completionQueues[date], settled)) {
         _completionQueues.remove(date);
       }
     }
   }
 
   @override
-  Future<void> toggleTaskCompletion(int id, bool completed) =>
+  Future<void> toggleTaskCompletion(int id, bool completed) async {
+    await completeTask(id, completed);
+  }
+
+  @override
+  Future<void> toggleSlotCompletion(int id, bool completed) async {
+    await completeSlot(id, completed);
+  }
+
+  @override
+  Future<PlanModel> completeTask(int id, bool completed) =>
       _toggle('tasks', id, completed);
   @override
-  Future<void> toggleSlotCompletion(int id, bool completed) =>
+  Future<PlanModel> completeSlot(int id, bool completed) =>
       _toggle('slots', id, completed);
   @override
   Future<UserProfileModel> getUserProfile({DateTime? today}) async =>
