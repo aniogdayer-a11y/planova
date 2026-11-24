@@ -1,5 +1,42 @@
 project_id = "planova"
 
+[auth]
+site_url = "https://aniogdayer-a11y.github.io/planova/"
+additional_redirect_urls = ["https://aniogdayer-a11y.github.io/planova/**"]
+
+[auth.email]
+enabled = true
+enable_confirmations = true
+otp_length = 6
+otp_expiry = 600
+max_frequency = "60s"
+
+[auth.email.smtp]
+enabled = true
+host = "env(SMTP_HOST)"
+port = 465
+user = "env(SMTP_USER)"
+pass = "env(SMTP_PASS)"
+admin_email = "env(SMTP_FROM)"
+sender_name = "Planova"
+
+[auth.email.template.confirmation]
+subject = "Your Planova verification code"
+content_path = "supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Your Planova sign-in code"
+content_path = "supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Planova password"
+content_path = "supabase/templates/recovery.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your Planova password was changed"
+content_path = "templates/password_changed.html"
+
 [functions.planova-api]
 verify_jwt = true
 
