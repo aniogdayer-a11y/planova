@@ -13,6 +13,7 @@ class RemotePlannerRepository
   final ApiClient api;
   final Map<String, int> _revisions = {};
   final Map<String, int> _draftRevisions = {};
+  final Map<String, Future<void>> _completionQueues = {};
   @override
   void beginDraft(String date) {
     _draftRevisions[date] = _revisions[date] ?? 0;
@@ -73,16 +74,29 @@ class RemotePlannerRepository
     if (date == null) {
       throw const ApiException(404, 'Refresh this plan and try again.');
     }
-    final result = await api.request(
-      'POST',
-      '$kind/$id',
-      data: {
-        'completed': completed,
-        'expected_revision': _revisions[date],
-        'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
-      },
-    );
-    _remember(result, date);
+    final previous = _completionQueues[date] ?? Future<void>.value();
+    final pending = previous.then<void>((_) {}, onError: (Object _) {}).then((
+      _,
+    ) async {
+      final result = await api.request(
+        'POST',
+        '$kind/$id',
+        data: {
+          'completed': completed,
+          'expected_revision': _revisions[date],
+          'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
+        },
+      );
+      _remember(result, date);
+    });
+    _completionQueues[date] = pending;
+    try {
+      await pending;
+    } finally {
+      if (identical(_completionQueues[date], pending)) {
+        _completionQueues.remove(date);
+      }
+    }
   }
 
   @override
